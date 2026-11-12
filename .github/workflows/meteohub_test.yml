@@ -1,0 +1,67 @@
+
+name: MeteoHub - Test connessione
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verifica autenticazione MeteoHub
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import urllib.request
+          import urllib.error
+
+          base = "https://meteohub.agenziaitaliameteo.it"
+
+          username = os.environ["METEOHUB_USERNAME"]
+          password = os.environ["METEOHUB_PASSWORD"]
+
+          if not username or not password:
+              raise RuntimeError("Secrets MeteoHub mancanti")
+
+          payload = json.dumps({
+              "username": username,
+              "password": password
+          }).encode("utf-8")
+
+          request = urllib.request.Request(
+              base + "/auth/login",
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  data = json.load(response)
+          except urllib.error.HTTPError as error:
+              raise RuntimeError(
+                  f"Login MeteoHub fallito: HTTP {error.code}"
+              ) from None
+
+          token = data.get("access_token") or data.get("token")
+
+          if not token:
+              raise RuntimeError(
+                  "Login ricevuto, formato token da verificare"
+              )
+
+          request = urllib.request.Request(
+              base + "/api/requests",
+              headers={"Authorization": "Bearer " + token}
+          )
+
+          with urllib.request.urlopen(request, timeout=30) as response:
+              if response.status != 200:
+                  raise RuntimeError("Verifica API fallita")
+
+          print("METEOHUB: CONNESSIONE RIUSCITA")
+          PY
