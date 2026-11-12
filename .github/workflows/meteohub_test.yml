@@ -47,7 +47,12 @@ jobs:
                   f"Login MeteoHub fallito: HTTP {error.code}"
               ) from None
 
-          token = data.get("access_token") or data.get("token")
+          if isinstance(data, str):
+    token = data
+elif isinstance(data, dict):
+    token = data.get("access_token") or data.get("token")
+else:
+    raise RuntimeError("Formato risposta login non riconosciuto")
 
           if not token:
               raise RuntimeError(
