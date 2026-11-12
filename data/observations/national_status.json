@@ -1,0 +1,25 @@
+{
+  "checked_utc": "2026-11-12T21:46:20.238367+00:00",
+  "regions": {
+    "Abruzzo": "pending_connector",
+    "Basilicata": "pending_connector",
+    "Calabria": "pending_connector",
+    "Campania": "pending_connector",
+    "Emilia-Romagna": "pending_connector",
+    "Friuli-Venezia Giulia": "pending_connector",
+    "Lazio": "pending_connector",
+    "Liguria": "pending_connector",
+    "Lombardia": "pending_connector",
+    "Marche": "pending_connector",
+    "Molise": "pending_connector",
+    "Piemonte": "pending_connector",
+    "Puglia": "pending_connector",
+    "Sardegna": "pending_connector",
+    "Sicilia": "pending_connector",
+    "Toscana": "pending_connector",
+    "Trentino-Alto Adige": "pending_connector",
+    "Umbria": "success",
+    "Valle d'Aosta": "pending_connector",
+    "Veneto": "pending_connector"
+  }
+}
