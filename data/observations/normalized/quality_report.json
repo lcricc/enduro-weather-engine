@@ -1,0 +1,26 @@
+{
+  "source_files": [
+    "data/observations/meteohub/request_5835976.jsonl",
+    "data/observations/meteohub/request_5848547.jsonl",
+    "data/observations/meteohub/request_5848640.jsonl",
+    "data/observations/meteohub/request_5848648.jsonl"
+  ],
+  "source_lines": 4203,
+  "normalized_rows": 3815,
+  "stations": 37,
+  "networks": [
+    "agrmet",
+    "dpcn-basilicata",
+    "dpcn-umbria"
+  ],
+  "quality_flags": {
+    "ok": 3815
+  },
+  "skipped_or_duplicate": {
+    "source_lines": 4203,
+    "duplicate_rows": 388
+  },
+  "first_datetime_utc": "2026-11-11T00:00:00Z",
+  "last_datetime_utc": "2026-11-12T22:00:00Z",
+  "note": "Only B13011 precipitation is supported. No region is inferred from coordinates; QC is structural, not scientific validation."
+}

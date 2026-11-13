@@ -1,0 +1,38 @@
+network,station_id,station_name,latitude,longitude,elevation_m
+agrmet,10574afcf90a2745,Carpineta,44.08903,12.27459,113.0
+agrmet,f5f8db6a177e5a86,Carpineti,44.47562,10.50865,580.0
+agrmet,6361080da24b1aac,Castel San Pietro Arpa,44.41112,11.59701,58.0
+agrmet,25183f9e11c7d7d3,Castelfranco Emilia,44.63005,11.02747,32.0
+agrmet,972ad5dba7f1b789,Castellazzo Villanova d'Arda,45.00253,10.00494,41.0
+agrmet,26951f70607245f0,Cavriago,44.68953,10.51062,95.0
+agrmet,2812f9516e251835,Correggio,44.74325,10.77293,33.0
+agrmet,3379b74549cb2e69,Cortile di Carpi,44.77839,10.97129,23.0
+agrmet,9dd0e01d9a88fe35,Cusercoli,44.04111,11.9819,330.0
+agrmet,077050a593ae57fc,Formigine,44.55123,10.90937,90.0
+agrmet,f8a20f7d71bfd94a,Gainago,44.88547,10.3807,28.0
+agrmet,2c1ecafe76ffdb30,Lavezzola,44.5635,11.84403,5.0
+agrmet,ba128934f7fd51f5,Mezzolara,44.57105,11.53379,20.0
+agrmet,2ff70c308c29e5f1,Mirabello,44.83186,11.45436,10.0
+agrmet,b3a66d90555cd1c9,Mirandola,44.88612,11.01631,18.0
+agrmet,4e6bed91a3ae4c7d,Modigliana Arpa,44.12022,11.80825,556.0
+agrmet,f8396ddc8c7eda6c,Montefiorino,44.32841,10.623,632.0
+agrmet,08d1d46906d610ca,Morciano,43.9261,12.71139,54.0
+agrmet,023f48d9b5c17f2d,Padulle Sala Bolognese,44.62775,11.29056,25.0
+agrmet,2abd81b5c9c73553,Pieve di Cusignano,44.78042,10.03873,277.0
+agrmet,979650e35fa35296,S. Agata Bolognese,44.695,11.14493,18.0
+agrmet,3ca31cddaa781689,S. Agata sul Santerno,44.44853,11.86667,10.0
+agrmet,ebf3b3492b02db48,S. Antonio Arpa,44.55254,11.69918,8.0
+agrmet,79437cabcab29983,S. Felice sul Panaro,44.82606,11.12578,16.0
+agrmet,bb9e56ad761eeb38,S. Nicolo',45.04139,9.58959,68.0
+agrmet,fe4017a8f97383da,S. Pietro in Vincoli,44.31392,12.1602,5.0
+agrmet,edc97a231e5ff25a,Sasso Morelli,44.41953,11.75408,19.0
+agrmet,b755c5eb8276b8ee,Sellarino Voghiera,44.74656,11.74639,3.0
+agrmet,c660814daf693c1f,Vergiano,44.03456,12.5005,36.0
+agrmet,6257bcf49892305f,Zibello,45.00695,10.16786,31.0
+agrmet,e1332acae2acd6e1,Zola Predosa,44.49614,11.20006,65.0
+dpcn-basilicata,edb54aaac0473898,Matera,40.66944,16.60167,410.0
+dpcn-basilicata,243bff1121cb3505,Potenza,40.63278,15.81083,668.0
+dpcn-basilicata,dd7543cf9ff5ecf2,S.Nicola,40.72972,15.80222,818.0
+dpcn-basilicata,89b1d716dc729ea1,Terra Montonata,40.31,16.75194,9.0
+dpcn-umbria,00a9d4be0b562917,Bocca Serriola,43.51592,12.35595,-1.0
+dpcn-umbria,0264eb5886c8f481,Scheggia,43.4064,12.6589,621.0
