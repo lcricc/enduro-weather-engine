@@ -3,8 +3,10 @@ import os
 import json
 import urllib.request
 import urllib.error
+from urllib.parse import urlparse
 
 BASE_URL = "https://meteohub.agenziaitaliameteo.it"
+OUTPUT_DIR = "data/meteohub"
 
 
 def api_request(path, token=None, payload=None):
@@ -63,55 +65,138 @@ def login():
 
     if not token:
         raise RuntimeError(
-            "Token di autenticazione non trovato"
+            "Token MeteoHub non trovato"
         )
 
     return token
 
 
+def safe_download_url(value):
+    if not isinstance(value, str):
+        return None
+
+    value = value.strip()
+
+    if not value:
+        return None
+
+    parsed = urlparse(value)
+
+    if parsed.scheme == "https":
+        if parsed.hostname == "meteohub.agenziaitaliameteo.it":
+            return value
+        return None
+
+    if value.startswith("/") and not value.startswith("//"):
+        return BASE_URL + value
+
+    return None
+
+
+def download_file(url, token, destination):
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    request = urllib.request.Request(
+        url,
+        headers=headers,
+        method="GET"
+    )
+
+    with urllib.request.urlopen(
+        request, timeout=90
+    ) as response:
+        content = response.read()
+
+    if not content:
+        raise RuntimeError("File scaricato vuoto")
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    with open(destination, "wb") as file:
+        file.write(content)
+
+    return len(content)
+
+
 def inspect_requests(token):
     result = api_request("/api/requests", token)
 
-    print("METEOHUB - DIAGNOSTICA RICHIESTE")
-    print("Connessione riuscita")
+    if not isinstance(result, list):
+        raise RuntimeError(
+            "Formato elenco richieste inatteso"
+        )
 
-    if isinstance(result, list):
-        print("Risposta: elenco")
-        print("Numero elementi:", len(result))
+    print("METEOHUB - CONTROLLO DOWNLOAD")
+    print("Richieste trovate:", len(result))
 
-        if result and isinstance(result[0], dict):
+    for index, item in enumerate(result, start=1):
+        if not isinstance(item, dict):
+            continue
+
+        request_id = item.get("id")
+        status = item.get("status")
+        output = item.get("fileoutput")
+        size = item.get("filesize")
+
+        print(f"\nRichiesta {index}")
+        print("ID presente:", request_id is not None)
+        print("Stato:", status)
+        print("Dimensione dichiarata:", size)
+        print("Tipo fileoutput:", type(output).__name__)
+
+        if isinstance(output, dict):
             print(
-                "Campi disponibili:",
-                sorted(result[0].keys())
+                "Campi fileoutput:",
+                sorted(output.keys())
             )
 
-    elif isinstance(result, dict):
-        print("Risposta: oggetto")
-        print(
-            "Campi principali:",
-            sorted(result.keys())
+        url = safe_download_url(output)
+
+        if url is None:
+            print(
+                "Download non avviato: "
+                "indirizzo diretto non disponibile"
+            )
+            continue
+
+        if not isinstance(status, str) or status.lower() not in (
+            "success",
+            "completed",
+            "complete",
+            "finished",
+            "done"
+        ):
+            print(
+                "Download non avviato: "
+                "stato non riconosciuto come completato"
+            )
+            continue
+
+        destination = os.path.join(
+            OUTPUT_DIR,
+            f"meteohub_request_{index}.json"
         )
 
-        for key, value in result.items():
-            if isinstance(value, list):
-                print(
-                    f"Campo elenco '{key}':",
-                    len(value),
-                    "elementi"
-                )
-                if value and isinstance(value[0], dict):
-                    print(
-                        "Campi degli elementi:",
-                        sorted(value[0].keys())
-                    )
+        try:
+            downloaded = download_file(
+                url,
+                token,
+                destination
+            )
 
-    else:
-        print(
-            "Tipo risposta:",
-            type(result).__name__
-        )
+            print("Download riuscito")
+            print("Byte scaricati:", downloaded)
+            print("File salvato:", destination)
 
-    print("Diagnostica completata")
+        except (urllib.error.URLError, OSError) as error:
+            print(
+                "Download non riuscito:",
+                type(error).__name__
+            )
+
+    print("\nControllo completato")
 
 
 def main():
