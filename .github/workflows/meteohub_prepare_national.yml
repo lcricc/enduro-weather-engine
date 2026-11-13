@@ -1,0 +1,170 @@
+
+name: MeteoHub - Prepara raccolta nazionale
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepara raccolta nazionale
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          import urllib.error
+          from pathlib import Path
+
+          BASE = "https://meteohub.agenziaitaliameteo.it"
+          OUT = Path("national_preparation")
+          OUT.mkdir(exist_ok=True)
+
+          def fetch(path, token=None, payload=None):
+              headers = {"Accept": "application/json"}
+              if token:
+                  headers["Authorization"] = "Bearer " + token
+              data = None
+              if payload is not None:
+                  data = json.dumps(payload).encode()
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(
+                  BASE + path,
+                  headers=headers,
+                  data=data
+              )
+              with urllib.request.urlopen(
+                  req, timeout=60
+              ) as response:
+                  return json.load(response)
+
+          login = fetch(
+              "/auth/login",
+              payload={
+                  "username": os.environ["METEOHUB_USERNAME"],
+                  "password": os.environ["METEOHUB_PASSWORD"]
+              }
+          )
+
+          token = (
+              login if isinstance(login, str)
+              else login.get("access_token")
+              or login.get("token")
+          )
+
+          if not token:
+              raise RuntimeError("Autenticazione fallita")
+
+          datasets = fetch("/api/datasets", token)
+          requests = fetch("/api/requests", token)
+
+          if not isinstance(datasets, list):
+              raise RuntimeError("Catalogo non valido")
+          if not isinstance(requests, list):
+              raise RuntimeError("Elenco richieste non valido")
+
+          obs = [
+              d for d in datasets
+              if isinstance(d, dict)
+              and d.get("category") == "OBS"
+          ]
+
+          def structure(value, depth=0):
+              if depth >= 7:
+                  return "nested"
+              if isinstance(value, dict):
+                  return {
+                      str(k): structure(v, depth + 1)
+                      for k, v in value.items()
+                  }
+              if isinstance(value, list):
+                  return {
+                      "type": "list",
+                      "count": len(value),
+                      "item_structure": (
+                          structure(value[0], depth + 1)
+                          if value else None
+                      )
+                  }
+              return type(value).__name__
+
+          # Condividiamo solo struttura e identificativi
+          # tecnici dei dataset, non token o dati personali.
+          report = {
+              "observation_datasets": [
+                  {
+                      "id": d.get("id"),
+                      "name": d.get("name")
+                  }
+                  for d in obs
+              ],
+              "total_observation_datasets": len(obs),
+              "existing_requests_count": len(requests),
+              "request_structures": [
+                  structure(r)
+                  for r in requests[:3]
+              ],
+              "api_schemas": {}
+          }
+
+          # Verifica documentazione API in sola lettura.
+          for path in [
+              "/openapi.json",
+              "/api/openapi.json",
+              "/v3/api-docs"
+          ]:
+              try:
+                  spec = fetch(path, token)
+                  if isinstance(spec, dict):
+                      paths = spec.get("paths", {})
+                      report["api_schemas"][path] = {
+                          "available": True,
+                          "paths": {
+                              p: sorted(methods.keys())
+                              for p, methods in paths.items()
+                              if isinstance(methods, dict)
+                              and (
+                                  "data" in p.lower()
+                                  or "request" in p.lower()
+                              )
+                          }
+                      }
+              except (
+                  urllib.error.HTTPError,
+                  urllib.error.URLError,
+                  ValueError
+              ):
+                  report["api_schemas"][path] = {
+                      "available": False
+                  }
+
+          destination = OUT / "national_plan.json"
+          destination.write_text(
+              json.dumps(
+                  report,
+                  indent=2,
+                  ensure_ascii=False
+              ),
+              encoding="utf-8"
+          )
+
+          print("Reti osservative:", len(obs))
+          print("Richieste esistenti:", len(requests))
+          print("Piano nazionale preparato")
+          PY
+
+      - name: Salva piano nazionale
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-piano-nazionale
+          path: national_preparation/
+          if-no-files-found: error
+          retention-days: 90
