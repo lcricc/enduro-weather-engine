@@ -1,12 +1,13 @@
 import os
 import json
+import gzip
+import zipfile
+import io
 import urllib.request
 import urllib.error
 from urllib.parse import quote, urlparse, unquote
-from pathlib import Path
 
 BASE_URL = "https://meteohub.agenziaitaliameteo.it"
-OUTPUT_DIR = Path("data/meteohub")
 
 
 def api_request(path, token=None, payload=None):
@@ -95,7 +96,34 @@ def get_filename(fileoutput):
     return filename
 
 
-def download_data(filename, token):
+def identify_format(content, content_type):
+    if content.startswith(b"PK\x03\x04"):
+        return "ZIP"
+
+    if content.startswith(b"\x1f\x8b"):
+        return "GZIP"
+
+    if content.startswith(b"\x28\xb5\x2f\xfd"):
+        return "ZSTANDARD"
+
+    if content.startswith(b"PAR1"):
+        return "PARQUET"
+
+    stripped = content.lstrip()
+
+    if stripped.startswith((b"{", b"[")):
+        return "POSSIBILE JSON"
+
+    if stripped.startswith(b"<!DOCTYPE html"):
+        return "HTML"
+
+    if stripped.startswith(b"<html"):
+        return "HTML"
+
+    return "NON RICONOSCIUTO"
+
+
+def diagnose_download(filename, token):
     encoded_name = quote(filename, safe="")
 
     url = (
@@ -108,7 +136,7 @@ def download_data(filename, token):
         url,
         headers={
             "Authorization": f"Bearer {token}",
-            "Accept": "application/json"
+            "Accept": "/"
         },
         method="GET"
     )
@@ -116,27 +144,95 @@ def download_data(filename, token):
     with urllib.request.urlopen(
         request, timeout=120
     ) as response:
+        content_type = response.headers.get(
+            "Content-Type", "non specificato"
+        )
+
+        content_encoding = response.headers.get(
+            "Content-Encoding", "non specificato"
+        )
+
         content = response.read()
 
-    if not content:
-        raise RuntimeError(
-            "Il file scaricato è vuoto"
-        )
+    print("HTTP: risposta ricevuta")
+    print("Content-Type:", content_type)
+    print("Content-Encoding:", content_encoding)
+    print("Dimensione byte:", len(content))
 
-    try:
-        observations = json.loads(
-            content.decode("utf-8")
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise RuntimeError(
-            "Il file ricevuto non è un JSON valido"
-        ) from None
+    detected = identify_format(
+        content,
+        content_type
+    )
 
-    return observations
+    print("Formato rilevato:", detected)
+
+    if detected == "GZIP":
+        try:
+            decompressed = gzip.decompress(content)
+            print(
+                "GZIP decompressione riuscita:",
+                len(decompressed),
+                "byte"
+            )
+            detected = identify_format(
+                decompressed,
+                ""
+            )
+            print(
+                "Formato interno:",
+                detected
+            )
+        except (OSError, EOFError):
+            print("GZIP non decomprimibile")
+
+    elif detected == "ZIP":
+        try:
+            with zipfile.ZipFile(
+                io.BytesIO(content)
+            ) as archive:
+                print(
+                    "Numero file ZIP:",
+                    len(archive.namelist())
+                )
+                print(
+                    "Estensioni presenti:",
+                    sorted({
+                        os.path.splitext(name)[1].lower()
+                        for name in archive.namelist()
+                    })
+                )
+        except zipfile.BadZipFile:
+            print("ZIP non valido")
+
+    if detected == "POSSIBILE JSON":
+        try:
+            data = json.loads(
+                content.decode("utf-8-sig")
+            )
+
+            print("JSON valido: SI")
+            print(
+                "Tipo struttura:",
+                type(data)._name_
+            )
+
+            if isinstance(data, list):
+                print(
+                    "Numero elementi:",
+                    len(data)
+                )
+
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError
+        ):
+            print("JSON valido: NO")
+
+    print("Diagnostica download terminata")
 
 
-def collect():
-    print("METEOHUB - DOWNLOAD AUTOMATICO")
+def main():
+    print("METEOHUB - DIAGNOSTICA FORMATO")
 
     token = login()
     requests = api_request(
@@ -151,17 +247,13 @@ def collect():
 
     print("Richieste trovate:", len(requests))
 
-    downloaded = 0
-
     for item in requests:
         if not isinstance(item, dict):
             continue
 
-        status = str(
+        if str(
             item.get("status", "")
-        ).upper()
-
-        if status != "SUCCESS":
+        ).upper() != "SUCCESS":
             continue
 
         filename = get_filename(
@@ -170,74 +262,29 @@ def collect():
 
         if not filename:
             print(
-                "Richiesta completata senza "
-                "nome file utilizzabile"
+                "Nome file non disponibile"
             )
             continue
 
-        print("Download richiesta completata")
-
         try:
-            observations = download_data(
+            diagnose_download(
                 filename,
                 token
             )
 
         except urllib.error.HTTPError as error:
             print(
-                "Errore download HTTP:",
+                "Errore HTTP:",
                 error.code
             )
-            continue
 
-        OUTPUT_DIR.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        request_id = str(
-            item.get("id", "unknown")
-        )
-
-        safe_id = "".join(
-            c for c in request_id
-            if c.isalnum() or c in ("-", "_")
-        ) or "unknown"
-
-        destination = (
-            OUTPUT_DIR
-            / f"meteohub_{safe_id}.json"
-        )
-
-        with open(
-            destination,
-            "w",
-            encoding="utf-8"
-        ) as output:
-            json.dump(
-                observations,
-                output,
-                ensure_ascii=False
-            )
-
-        downloaded += 1
-
-        print("File salvato:", destination)
-
-        if isinstance(observations, list):
+        except urllib.error.URLError:
             print(
-                "Osservazioni:",
-                len(observations)
+                "Errore di connessione"
             )
 
-    print("Download completati:", downloaded)
-
-    if downloaded == 0:
-        raise RuntimeError(
-            "Nessun file scaricato. "
-            "Controllare il registro GitHub."
-        )
+        break
 
 
-if __name__ == "__main__":
-    collect()
+if _name_ == "_main_":
+    main()
