@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       submit:
-        description: "Invia richieste reali? false = simulazione"
+        description: "Invia richieste reali a MeteoHub"
         required: true
         type: boolean
         default: false
@@ -18,15 +18,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepara richieste nazionali
+      - name: Invia richieste MeteoHub
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           SUBMIT: ${{ inputs.submit }}
         run: |
           python - <<'PY'
-          import json
           import os
+          import json
+          import copy
           import urllib.request
           import urllib.error
           from pathlib import Path
@@ -40,30 +41,36 @@ jobs:
               headers = {"Accept": "application/json"}
               if token:
                   headers["Authorization"] = "Bearer " + token
+
               data = None
               if payload is not None:
+                  data = json.dumps(payload).encode("utf-8")
                   headers["Content-Type"] = "application/json"
-                  data = json.dumps(payload).encode()
+
               req = urllib.request.Request(
                   BASE + path,
-                  headers=headers,
                   data=data,
-                  method="POST" if data else "GET"
+                  headers=headers,
+                  method="POST" if data is not None else "GET"
               )
-              with urllib.request.urlopen(
-                  req, timeout=60
-              ) as response:
-                  raw = response.read().decode()
+
+              with urllib.request.urlopen(req, timeout=90) as r:
+                  body = r.read().decode("utf-8")
+                  if not body:
+                      return {}
                   try:
-                      return json.loads(raw)
+                      return json.loads(body)
                   except ValueError:
-                      return {"response": raw[:500]}
+                      return {"response_text": body[:300]}
+
+          username = os.environ["METEOHUB_USERNAME"]
+          password = os.environ["METEOHUB_PASSWORD"]
 
           login = api(
               "/auth/login",
               payload={
-                  "username": os.environ["METEOHUB_USERNAME"],
-                  "password": os.environ["METEOHUB_PASSWORD"]
+                  "username": username,
+                  "password": password
               }
           )
 
@@ -72,42 +79,49 @@ jobs:
               else login.get("access_token")
               or login.get("token")
           )
+
           if not token:
-              raise RuntimeError("Login fallito")
+              raise RuntimeError("Autenticazione fallita")
 
           requests = api("/api/requests", token)
           datasets = api("/api/datasets", token)
 
           if not isinstance(requests, list):
-              raise RuntimeError("Richieste non valide")
+              raise RuntimeError("Elenco richieste non valido")
+          if not isinstance(datasets, list):
+              raise RuntimeError("Catalogo non valido")
+
+          reference = next(
+              (
+                  r for r in requests
+                  if isinstance(r, dict)
+                  and str(r.get("id")) == "5835976"
+              ),
+              None
+          )
+
+          if not reference:
+              raise RuntimeError(
+                  "Richiesta di riferimento non trovata"
+              )
+
+          original_args = reference.get("args")
+          if not isinstance(original_args, dict):
+              raise RuntimeError(
+                  "Parametri di riferimento non disponibili"
+              )
 
           available = {
               d.get("id") for d in datasets
               if isinstance(d, dict)
           }
 
-          original = next(
-              (
-                  r for r in requests
-                  if isinstance(r, dict)
-                  and r.get("id") == 5835976
-              ),
-              None
+          # Ultimo giorno UTC completo, con 24 ore
+          # di margine per la pubblicazione dei dati.
+          today = datetime.now(timezone.utc).replace(
+              hour=0, minute=0, second=0, microsecond=0
           )
-
-          if original is None:
-              raise RuntimeError(
-                  "Richiesta Basilicata 5835976 non trovata"
-              )
-
-          args = original.get("args")
-          if not isinstance(args, dict):
-              raise RuntimeError("Parametri originali mancanti")
-
-          now = datetime.now(timezone.utc)
-          end = now.replace(
-              minute=0, second=0, microsecond=0
-          )
+          end = today - timedelta(days=1)
           start = end - timedelta(days=1)
 
           targets = [
@@ -115,23 +129,26 @@ jobs:
               ("Umbria", "dpcn-umbria")
           ]
 
-          results = []
           submit = os.environ.get(
               "SUBMIT", "false"
           ).lower() == "true"
 
+          results = []
+
           for region, dataset in targets:
+              entry = {
+                  "region": region,
+                  "dataset": dataset
+              }
+
               if dataset not in available:
-                  results.append({
-                      "region": region,
-                      "dataset": dataset,
-                      "status": "dataset_not_found"
-                  })
+                  entry["status"] = "dataset_not_found"
+                  results.append(entry)
                   continue
 
-              parameters = json.loads(json.dumps(args))
-              parameters["dataset_names"] = [dataset]
-              parameters["reftime"] = {
+              args = copy.deepcopy(original_args)
+              args["dataset_names"] = [dataset]
+              args["reftime"] = {
                   "from": start.strftime(
                       "%Y-%m-%dT%H:%M:%SZ"
                   ),
@@ -140,58 +157,78 @@ jobs:
                   )
               }
 
-              # La forma del payload di creazione
-              # non è ancora verificata.
-              # Evitiamo invii con schema ipotizzato.
-              entry = {
-                  "region": region,
-                  "dataset": dataset,
-                  "status": "prepared",
-                  "parameters": parameters
+              name = (
+                  "ENDURO_NATIONAL_"
+                  + region.upper().replace(" ", "_")
+                  + "_"
+                  + start.strftime("%Y%m%d")
+              )
+
+              payload = {
+                  **args,
+                  "request_name": name
               }
 
-              if submit:
-                  entry["status"] = "submission_blocked"
-                  entry["reason"] = (
-                      "POST payload schema not yet verified"
+              entry["request_name"] = name
+              entry["period"] = args["reftime"]
+
+              if not submit:
+                  entry["status"] = "dry_run"
+                  results.append(entry)
+                  continue
+
+              # Un solo tentativo per regione:
+              # nessun retry automatico.
+              try:
+                  response = api(
+                      "/api/data",
+                      token,
+                      payload=payload
                   )
 
+                  entry["status"] = "submitted"
+                  entry["response"] = response
+
+              except urllib.error.HTTPError as e:
+                  entry["status"] = "http_error"
+                  entry["http_code"] = e.code
+                  entry["error_detail"] = (
+                      e.read()
+                      .decode("utf-8", errors="replace")[:1000]
+                  )
+
+              except Exception as e:
+                  entry["status"] = "unknown_result"
+                  entry["error_type"] = type(e).__name__
+
               results.append(entry)
+              print(region, entry["status"])
 
           report = {
-              "mode": (
-                  "submission_safety_check"
-                  if submit else "dry_run"
-              ),
-              "reference_request_id": 5835976,
-              "targets": results,
-              "note": (
-                  "No extraction requests submitted. "
-                  "Creation schema must be confirmed."
-              )
+              "mode": "submit" if submit else "dry_run",
+              "reference_request": 5835976,
+              "results": results
           }
 
           (OUT / "national_collection.json").write_text(
               json.dumps(
-                  report, indent=2, ensure_ascii=False
+                  report,
+                  indent=2,
+                  ensure_ascii=False,
+                  default=str
               ),
               encoding="utf-8"
           )
 
-          print("Reti preparate:", len(results))
-          for item in results:
-              print(
-                  item["region"],
-                  item["dataset"],
-                  item["status"]
-              )
-          print("Rapporto creato")
+          print("Richieste elaborate:", len(results))
+          print("Rapporto salvato")
           PY
 
-      - name: Conserva piano di raccolta
+      - name: Salva rapporto
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: meteohub-raccolta-nazionale
           path: national_collection/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
