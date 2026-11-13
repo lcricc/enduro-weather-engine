@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Esamina catalogo MeteoHub
+      - name: Leggi inventario dataset
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
@@ -26,154 +26,112 @@ jobs:
           import os
           import json
           import urllib.request
-          import urllib.error
           from pathlib import Path
 
-          BASE = "https://meteohub.agenziaitaliameteo.it"
-          OUT = Path("national_catalog")
-          OUT.mkdir(exist_ok=True)
+          base = "https://meteohub.agenziaitaliameteo.it"
+          output = Path("national_catalog")
+          output.mkdir(exist_ok=True)
 
-          def get_json(path, token=None, payload=None):
+          def request_json(path, token=None, payload=None):
               headers = {"Accept": "application/json"}
+              data = None
+
               if token:
                   headers["Authorization"] = "Bearer " + token
-
-              data = None
-              method = "GET"
 
               if payload is not None:
                   data = json.dumps(payload).encode("utf-8")
                   headers["Content-Type"] = "application/json"
-                  method = "POST"
 
               request = urllib.request.Request(
-                  BASE + path,
+                  base + path,
                   data=data,
-                  headers=headers,
-                  method=method
+                  headers=headers
               )
 
               with urllib.request.urlopen(
-                  request, timeout=45
+                  request, timeout=60
               ) as response:
                   return json.load(response)
 
-          username = os.environ.get("METEOHUB_USERNAME")
-          password = os.environ.get("METEOHUB_PASSWORD")
-
-          if not username or not password:
-              raise RuntimeError("Credenziali mancanti")
-
-          login = get_json(
+          login = request_json(
               "/auth/login",
               payload={
-                  "username": username,
-                  "password": password
+                  "username": os.environ["METEOHUB_USERNAME"],
+                  "password": os.environ["METEOHUB_PASSWORD"]
               }
           )
 
           if isinstance(login, str):
               token = login
-          elif isinstance(login, dict):
+          else:
               token = (
                   login.get("access_token")
                   or login.get("token")
               )
-          else:
-              token = None
 
           if not token:
-              raise RuntimeError("Login MeteoHub fallito")
+              raise RuntimeError("Token non disponibile")
 
-          print("METEOHUB: autenticazione riuscita")
+          datasets = request_json("/api/datasets", token)
 
-          # Solo endpoint di lettura.
-          # Alcuni percorsi sono candidati da verificare,
-          # non endpoint già confermati.
-          endpoints = [
-              "/api/datasets",
-              "/api/dataset",
-              "/api/networks",
-              "/api/stations",
-              "/api/metadata"
-          ]
+          if not isinstance(datasets, list):
+              raise RuntimeError("Formato catalogo inatteso")
 
-          results = []
+          allowed = {
+              "id", "name", "title", "description",
+              "code", "identifier", "network",
+              "region", "provider", "organization",
+              "type", "category", "dataset_id",
+              "network_id", "label"
+          }
 
-          for path in endpoints:
-              entry = {
-                  "endpoint": path,
-                  "http_status": None,
-                  "response_type": None,
-                  "top_level_keys": [],
-                  "items": None
-              }
+          inventory = []
 
-              try:
-                  response = get_json(path, token)
-                  entry["http_status"] = 200
-                  entry["response_type"] = type(
-                      response
-                  ).__name__
+          for index, dataset in enumerate(datasets):
+              entry = {"index": index + 1}
 
-                  if isinstance(response, list):
-                      entry["items"] = len(response)
-
-                  elif isinstance(response, dict):
-                      entry["top_level_keys"] = sorted(
-                          response.keys()
-                      )
-
-                      # Non esportiamo i valori ricevuti:
-                      # solo la struttura della risposta.
-
-                  print(path, "HTTP 200")
-
-              except urllib.error.HTTPError as error:
-                  entry["http_status"] = error.code
-                  print(path, "HTTP", error.code)
-
-              except (
-                  urllib.error.URLError,
-                  TimeoutError,
-                  ValueError
-              ) as error:
-                  entry["error_type"] = type(
-                      error
-                  ).__name__
-                  print(
-                      path,
-                      type(error).__name__
+              if isinstance(dataset, dict):
+                  entry["available_fields"] = sorted(
+                      dataset.keys()
                   )
 
-              results.append(entry)
+                  for key, value in dataset.items():
+                      if key.lower() in allowed:
+                          if isinstance(value, (str, int, float, bool)):
+                              entry[key] = (
+                                  value[:500]
+                                  if isinstance(value, str)
+                                  else value
+                              )
+              else:
+                  entry["value_type"] = type(dataset).__name__
+
+              inventory.append(entry)
 
           report = {
               "source": "MeteoHub",
-              "purpose": "National API discovery",
-              "endpoints": results
+              "total_datasets": len(datasets),
+              "inventory": inventory
           }
 
-          destination = OUT / "endpoint_report.json"
+          path = output / "national_inventory.json"
 
-          with destination.open(
-              "w", encoding="utf-8"
-          ) as file:
+          with path.open("w", encoding="utf-8") as f:
               json.dump(
-                  report,
-                  file,
-                  indent=2,
-                  ensure_ascii=False
+                  report, f,
+                  ensure_ascii=False,
+                  indent=2
               )
 
-          print("Rapporto salvato:", destination)
-          print("Diagnostica nazionale completata")
+          print("Dataset trovati:", len(datasets))
+          print("Inventario salvato:", path)
           PY
 
-      - name: Conserva rapporto catalogo
+      - name: Conserva inventario nazionale
         uses: actions/upload-artifact@v4
         with:
-          name: meteohub-catalogo-endpoint
-          path: national_catalog/endpoint_report.json
+          name: meteohub-inventario-nazionale
+          path: national_catalog/national_inventory.json
           if-no-files-found: error
           retention-days: 90
