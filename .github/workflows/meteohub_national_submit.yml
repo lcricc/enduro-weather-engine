@@ -3,8 +3,6 @@ name: MeteoHub - Invio nazionale automatico
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "10 2,8,14,20 * * *"
 
 permissions:
   contents: read
@@ -19,7 +17,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Invia richieste nazionali senza duplicati
+      - name: Gestisci invii nazionali
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
@@ -43,52 +41,56 @@ jobs:
 
           def api(path, token=None, payload=None):
               headers = {"Accept": "application/json"}
+
               if token:
                   headers["Authorization"] = "Bearer " + token
 
-              data = None
+              body = None
               if payload is not None:
-                  data = json.dumps(payload).encode("utf-8")
+                  body = json.dumps(payload).encode("utf-8")
                   headers["Content-Type"] = "application/json"
 
               req = urllib.request.Request(
                   BASE + path,
-                  data=data,
+                  data=body,
                   headers=headers,
-                  method="POST" if data is not None else "GET"
+                  method="POST" if body is not None else "GET"
               )
 
               with urllib.request.urlopen(
                   req, timeout=90
               ) as response:
-                  body = response.read()
-                  if not body:
-                      return {}
-                  return json.loads(body)
+                  content = response.read()
+                  return json.loads(content) if content else {}
 
-          login = api(
-              "/auth/login",
-              payload={
-                  "username": os.environ["METEOHUB_USERNAME"],
-                  "password": os.environ["METEOHUB_PASSWORD"]
-              }
-          )
+          def authenticate():
+              login = api(
+                  "/auth/login",
+                  payload={
+                      "username": os.environ["METEOHUB_USERNAME"],
+                      "password": os.environ["METEOHUB_PASSWORD"]
+                  }
+              )
+              if isinstance(login, str):
+                  token = login
+              elif isinstance(login, dict):
+                  token = (
+                      login.get("access_token")
+                      or login.get("token")
+                  )
+              else:
+                  token = None
 
-          token = (
-              login if isinstance(login, str)
-              else login.get("access_token")
-              or login.get("token")
-          )
+              if not token:
+                  raise RuntimeError("Autenticazione fallita")
+              return token
 
-          if not token:
-              raise RuntimeError("Autenticazione fallita")
-
+          token = authenticate()
           datasets = api("/api/datasets", token)
           requests = api("/api/requests", token)
 
           if not isinstance(datasets, list):
               raise RuntimeError("Catalogo non valido")
-
           if not isinstance(requests, list):
               raise RuntimeError("Elenco richieste non valido")
 
@@ -104,11 +106,9 @@ jobs:
           if not reference or not isinstance(
               reference.get("args"), dict
           ):
-              raise RuntimeError(
-                  "Richiesta di riferimento mancante"
-              )
+              raise RuntimeError("Richiesta di riferimento mancante")
 
-          obs = sorted({
+          networks = sorted({
               d["id"]
               for d in datasets
               if isinstance(d, dict)
@@ -116,32 +116,18 @@ jobs:
               and isinstance(d.get("id"), str)
           })
 
-          if not obs:
-              raise RuntimeError(
-                  "Nessuna rete osservativa trovata"
-              )
-
           now = datetime.now(timezone.utc)
-
-          # Ultimo giorno UTC completo con
-          # un giorno di ritardo di pubblicazione.
           end = now.replace(
               hour=0, minute=0,
               second=0, microsecond=0
           ) - timedelta(days=1)
-
           start = end - timedelta(days=1)
 
+          start_iso = start.strftime("%Y-%m-%dT%H:%M:%SZ")
+          end_iso = end.strftime("%Y-%m-%dT%H:%M:%SZ")
           date_tag = start.strftime("%Y%m%d")
 
-          start_iso = start.strftime(
-              "%Y-%m-%dT%H:%M:%SZ"
-          )
-          end_iso = end.strftime(
-              "%Y-%m-%dT%H:%M:%SZ"
-          )
-
-          def normalize_time(value):
+          def normalized_time(value):
               if not isinstance(value, str):
                   return ""
               try:
@@ -150,59 +136,46 @@ jobs:
                   )
                   if dt.tzinfo is None:
                       dt = dt.replace(tzinfo=timezone.utc)
-                  return dt.astimezone(
-                      timezone.utc
-                  ).isoformat()
+                  return dt.astimezone(timezone.utc).isoformat()
               except ValueError:
                   return value
 
-          def get_names(r):
-              args = r.get("args")
-              if not isinstance(args, dict):
-                  args = {}
+          def exists(dataset, name):
+              for r in requests:
+                  if not isinstance(r, dict):
+                      continue
 
-              names = []
-              for value in (
-                  r.get("name"),
-                  r.get("request_name"),
-                  args.get("request_name")
-              ):
-                  if isinstance(value, str):
-                      names.append(value)
-              return names
+                  args = r.get("args")
+                  if not isinstance(args, dict):
+                      args = {}
 
-          def matching_request(r, dataset, name):
-              if not isinstance(r, dict):
-                  return False
+                  names = [
+                      r.get("name"),
+                      r.get("request_name"),
+                      args.get("request_name")
+                  ]
 
-              if name in get_names(r):
-                  return True
+                  if name in names:
+                      return True
 
-              args = r.get("args")
-              if not isinstance(args, dict):
-                  return False
+                  ds = args.get("dataset_names")
+                  if isinstance(ds, str):
+                      ds = [ds]
 
-              ds = args.get("dataset_names")
-              if isinstance(ds, str):
-                  ds = [ds]
+                  period = args.get("reftime")
 
-              if not isinstance(ds, list):
-                  return False
+                  if (
+                      isinstance(ds, list)
+                      and dataset in ds
+                      and isinstance(period, dict)
+                      and normalized_time(period.get("from"))
+                          == normalized_time(start_iso)
+                      and normalized_time(period.get("to"))
+                          == normalized_time(end_iso)
+                  ):
+                      return True
 
-              if dataset not in ds:
-                  return False
-
-              period = args.get("reftime")
-              if not isinstance(period, dict):
-                  return False
-
-              return (
-                  normalize_time(period.get("from"))
-                  == normalize_time(start_iso)
-                  and
-                  normalize_time(period.get("to"))
-                  == normalize_time(end_iso)
-              )
+              return False
 
           report = {
               "generated_at": now.isoformat(),
@@ -210,15 +183,14 @@ jobs:
                   "from": start_iso,
                   "to": end_iso
               },
-              "networks": len(obs),
-              "existing_requests": len(requests),
+              "networks_found": len(networks),
               "results": []
           }
 
           submitted = 0
           stopped = False
 
-          for dataset in obs:
+          for dataset in networks:
               name = (
                   "ENDURO_NATIONAL_"
                   + dataset.upper().replace("-", "_")
@@ -230,21 +202,18 @@ jobs:
                   "request_name": name
               }
 
-              if any(
-                  matching_request(r, dataset, name)
-                  for r in requests
-              ):
+              if exists(dataset, name):
                   entry["status"] = "already_exists"
-                  report["results"].append(entry)
-                  continue
-
-              if submitted >= MAX_NEW:
-                  entry["status"] = "queued"
                   report["results"].append(entry)
                   continue
 
               if stopped:
                   entry["status"] = "paused"
+                  report["results"].append(entry)
+                  continue
+
+              if submitted >= MAX_NEW:
+                  entry["status"] = "queued"
                   report["results"].append(entry)
                   continue
 
@@ -262,18 +231,15 @@ jobs:
 
               try:
                   response = api(
-                      "/api/data",
-                      token,
-                      payload=payload
+                      "/api/data", token, payload
                   )
 
+                  request_id = None
                   if isinstance(response, dict):
                       request_id = (
                           response.get("request_id")
                           or response.get("id")
                       )
-                  else:
-                      request_id = None
 
                   if request_id is None:
                       entry["status"] = "unconfirmed"
@@ -283,8 +249,6 @@ jobs:
                       entry["request_id"] = request_id
                       submitted += 1
 
-                      # Protegge anche da duplicati
-                      # nella stessa esecuzione.
                       requests.append({
                           "id": request_id,
                           "name": name,
@@ -294,10 +258,29 @@ jobs:
                       time.sleep(2)
 
               except urllib.error.HTTPError as error:
-                  entry["status"] = "http_error"
                   entry["http_code"] = error.code
 
-                  if error.code in (401, 403, 429):
+                  if error.code == 401:
+                      # Controlla se il token è ancora valido.
+                      try:
+                          api("/api/requests", token)
+                          entry["status"] = "rejected_401"
+                          # Autenticazione GET valida:
+                          # possibile rifiuto del dataset.
+                          # Non riprovare questa rete.
+                      except Exception:
+                          entry["status"] = "auth_failure"
+                          stopped = True
+
+                  elif error.code in (400, 403, 404, 422):
+                      entry["status"] = "rejected"
+
+                  elif error.code == 429:
+                      entry["status"] = "rate_limited"
+                      stopped = True
+
+                  else:
+                      entry["status"] = "http_error"
                       stopped = True
 
               except Exception as error:
@@ -311,22 +294,21 @@ jobs:
           report["submitted_count"] = submitted
           report["stopped_early"] = stopped
 
-          destination = OUT / "national_submit_report.json"
-          destination.write_text(
+          (OUT / "national_submit_report.json").write_text(
               json.dumps(
                   report,
-                  ensure_ascii=False,
-                  indent=2
+                  indent=2,
+                  ensure_ascii=False
               ),
               encoding="utf-8"
           )
 
-          print("Reti:", len(obs))
+          print("Reti:", len(networks))
           print("Nuove richieste:", submitted)
-          print("Report:", destination)
+          print("Esecuzione terminata")
           PY
 
-      - name: Conserva rapporto invii
+      - name: Conserva rapporto
         if: always()
         uses: actions/upload-artifact@v4
         with:
