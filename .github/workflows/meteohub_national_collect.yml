@@ -3,65 +3,88 @@ name: MeteoHub - Raccolta nazionale
 
 on:
   workflow_dispatch:
-    inputs:
-      submit:
-        description: "Invia richieste reali a MeteoHub"
-        required: true
-        type: boolean
-        default: false
+  schedule:
+    - cron: "15 1,7,13,19 * * *"
 
 permissions:
   contents: read
 
+concurrency:
+  group: meteohub-national-collection
+  cancel-in-progress: false
+
 jobs:
   national:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
-      - name: Invia richieste MeteoHub
+      - name: Raccolta nazionale MeteoHub
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          SUBMIT: ${{ inputs.submit }}
         run: |
           python - <<'PY'
           import os
           import json
-          import copy
+          import time
           import urllib.request
           import urllib.error
           from pathlib import Path
           from datetime import datetime, timedelta, timezone
+          from urllib.parse import quote
 
           BASE = "https://meteohub.agenziaitaliameteo.it"
           OUT = Path("national_collection")
-          OUT.mkdir(exist_ok=True)
+          DATA = OUT / "observations"
+          DATA.mkdir(parents=True, exist_ok=True)
 
-          def api(path, token=None, payload=None):
+          MAX_SUBMISSIONS = 8
+          MAX_DOWNLOADS = 12
+          MAX_FILE_BYTES = 20 * 1024 * 1024
+
+          def api(path, token=None, payload=None,
+                  binary=False):
               headers = {"Accept": "application/json"}
               if token:
                   headers["Authorization"] = "Bearer " + token
 
-              data = None
+              body = None
               if payload is not None:
-                  data = json.dumps(payload).encode("utf-8")
+                  body = json.dumps(payload).encode()
                   headers["Content-Type"] = "application/json"
 
-              req = urllib.request.Request(
+              request = urllib.request.Request(
                   BASE + path,
-                  data=data,
+                  data=body,
                   headers=headers,
-                  method="POST" if data is not None else "GET"
+                  method="POST" if body is not None else "GET"
               )
 
-              with urllib.request.urlopen(req, timeout=90) as r:
-                  body = r.read().decode("utf-8")
-                  if not body:
-                      return {}
-                  try:
-                      return json.loads(body)
-                  except ValueError:
-                      return {"response_text": body[:300]}
+              with urllib.request.urlopen(
+                  request, timeout=120
+              ) as response:
+                  if binary:
+                      content = response.read(
+                          MAX_FILE_BYTES + 1
+                      )
+                      if len(content) > MAX_FILE_BYTES:
+                          raise ValueError("File troppo grande")
+                      return content
+
+                  content = response.read()
+                  return json.loads(content) if content else {}
+
+          def save_json(name, value):
+              (OUT / name).write_text(
+                  json.dumps(
+                      value,
+                      ensure_ascii=False,
+                      indent=2,
+                      default=str
+                  ),
+                  encoding="utf-8"
+              )
 
           username = os.environ["METEOHUB_USERNAME"]
           password = os.environ["METEOHUB_PASSWORD"]
@@ -83,13 +106,23 @@ jobs:
           if not token:
               raise RuntimeError("Autenticazione fallita")
 
-          requests = api("/api/requests", token)
           datasets = api("/api/datasets", token)
+          requests = api("/api/requests", token)
 
-          if not isinstance(requests, list):
-              raise RuntimeError("Elenco richieste non valido")
           if not isinstance(datasets, list):
               raise RuntimeError("Catalogo non valido")
+          if not isinstance(requests, list):
+              raise RuntimeError("Richieste non valide")
+
+          observations = sorted(
+              [
+                  d for d in datasets
+                  if isinstance(d, dict)
+                  and d.get("category") == "OBS"
+                  and isinstance(d.get("id"), str)
+              ],
+              key=lambda d: d["id"]
+          )
 
           reference = next(
               (
@@ -100,54 +133,137 @@ jobs:
               None
           )
 
-          if not reference:
+          if not reference or not isinstance(
+              reference.get("args"), dict
+          ):
               raise RuntimeError(
-                  "Richiesta di riferimento non trovata"
+                  "Richiesta Basilicata di riferimento mancante"
               )
 
-          original_args = reference.get("args")
-          if not isinstance(original_args, dict):
-              raise RuntimeError(
-                  "Parametri di riferimento non disponibili"
-              )
-
-          available = {
-              d.get("id") for d in datasets
-              if isinstance(d, dict)
-          }
-
-          # Ultimo giorno UTC completo, con 24 ore
-          # di margine per la pubblicazione dei dati.
-          today = datetime.now(timezone.utc).replace(
-              hour=0, minute=0, second=0, microsecond=0
-          )
-          end = today - timedelta(days=1)
+          now = datetime.now(timezone.utc)
+          end = now.replace(
+              hour=0, minute=0,
+              second=0, microsecond=0
+          ) - timedelta(days=1)
           start = end - timedelta(days=1)
 
-          targets = [
-              ("Lazio", "dpcn-lazio"),
-              ("Umbria", "dpcn-umbria")
-          ]
+          date_tag = start.strftime("%Y%m%d")
 
-          submit = os.environ.get(
-              "SUBMIT", "false"
-          ).lower() == "true"
+          existing_names = {
+              r.get("name")
+              for r in requests
+              if isinstance(r, dict)
+              and isinstance(r.get("name"), str)
+          }
 
-          results = []
+          report = {
+              "generated_at": now.isoformat(),
+              "period": {
+                  "from": start.isoformat(),
+                  "to": end.isoformat()
+              },
+              "networks_found": len(observations),
+              "submissions": [],
+              "downloads": [],
+              "warnings": []
+          }
 
-          for region, dataset in targets:
-              entry = {
-                  "region": region,
-                  "dataset": dataset
-              }
+          # PRIMA: recupera estrazioni completate.
+          downloaded = 0
 
-              if dataset not in available:
-                  entry["status"] = "dataset_not_found"
-                  results.append(entry)
+          for r in requests:
+              if downloaded >= MAX_DOWNLOADS:
+                  break
+
+              if not isinstance(r, dict):
                   continue
 
-              args = copy.deepcopy(original_args)
-              args["dataset_names"] = [dataset]
+              name = str(r.get("name") or "")
+              if not name.startswith("ENDURO_NATIONAL_"):
+                  continue
+
+              status = str(
+                  r.get("status") or ""
+              ).lower()
+
+              if status not in (
+                  "completed", "complete",
+                  "finished", "done", "success"
+              ):
+                  continue
+
+              filename = r.get("fileoutput")
+              if not isinstance(filename, str):
+                  continue
+
+              filename = filename.replace("\\", "/").split("/")[-1]
+
+              if not filename or filename in (".", ".."):
+                  continue
+
+              request_id = str(r.get("id") or "unknown")
+
+              try:
+                  content = api(
+                      "/api/data/" + quote(filename, safe=""),
+                      token,
+                      binary=True
+                  )
+
+                  if not content:
+                      raise ValueError("File vuoto")
+
+                  destination = DATA / (
+                      "request_" + request_id + ".bin"
+                  )
+                  destination.write_bytes(content)
+
+                  report["downloads"].append({
+                      "request_id": request_id,
+                      "bytes": len(content),
+                      "saved_as": destination.name,
+                      "status": "downloaded"
+                  })
+                  downloaded += 1
+
+              except Exception as error:
+                  report["downloads"].append({
+                      "request_id": request_id,
+                      "status": "download_error",
+                      "error_type": type(error).__name__
+                  })
+
+          # SECONDA FASE: invia fino a 8 nuove richieste.
+          submitted = 0
+
+          for dataset in observations:
+              dataset_id = dataset["id"]
+
+              request_name = (
+                  "ENDURO_NATIONAL_"
+                  + dataset_id.upper().replace("-", "_")
+                  + "_" + date_tag
+              )
+
+              if request_name in existing_names:
+                  report["submissions"].append({
+                      "dataset": dataset_id,
+                      "status": "already_exists"
+                  })
+                  continue
+
+              if submitted >= MAX_SUBMISSIONS:
+                  report["submissions"].append({
+                      "dataset": dataset_id,
+                      "status": "queued_next_run"
+                  })
+                  continue
+
+              args = json.loads(
+                  json.dumps(reference["args"])
+              )
+
+              args["dataset_names"] = [dataset_id]
               args["reftime"] = {
                   "from": start.strftime(
                       "%Y-%m-%dT%H:%M:%SZ"
@@ -157,28 +273,11 @@ jobs:
                   )
               }
 
-              name = (
-                  "ENDURO_NATIONAL_"
-                  + region.upper().replace(" ", "_")
-                  + "_"
-                  + start.strftime("%Y%m%d")
-              )
-
               payload = {
                   **args,
-                  "request_name": name
+                  "request_name": request_name
               }
 
-              entry["request_name"] = name
-              entry["period"] = args["reftime"]
-
-              if not submit:
-                  entry["status"] = "dry_run"
-                  results.append(entry)
-                  continue
-
-              # Un solo tentativo per regione:
-              # nessun retry automatico.
               try:
                   response = api(
                       "/api/data",
@@ -186,49 +285,79 @@ jobs:
                       payload=payload
                   )
 
-                  entry["status"] = "submitted"
-                  entry["response"] = response
-
-              except urllib.error.HTTPError as e:
-                  entry["status"] = "http_error"
-                  entry["http_code"] = e.code
-                  entry["error_detail"] = (
-                      e.read()
-                      .decode("utf-8", errors="replace")[:1000]
+                  request_id = (
+                      response.get("request_id")
+                      if isinstance(response, dict)
+                      else None
                   )
 
-              except Exception as e:
-                  entry["status"] = "unknown_result"
-                  entry["error_type"] = type(e).__name__
+                  if request_id is None:
+                      report["submissions"].append({
+                          "dataset": dataset_id,
+                          "status": "unconfirmed_response"
+                      })
+                      report["warnings"].append(
+                          "Verificare richieste prima di rilanciare"
+                      )
+                      break
 
-              results.append(entry)
-              print(region, entry["status"])
+                  existing_names.add(request_name)
+                  submitted += 1
 
-          report = {
-              "mode": "submit" if submit else "dry_run",
-              "reference_request": 5835976,
-              "results": results
-          }
+                  report["submissions"].append({
+                      "dataset": dataset_id,
+                      "status": "submitted",
+                      "request_id": request_id
+                  })
 
-          (OUT / "national_collection.json").write_text(
-              json.dumps(
-                  report,
-                  indent=2,
-                  ensure_ascii=False,
-                  default=str
-              ),
-              encoding="utf-8"
-          )
+                  print(
+                      "INVIATA",
+                      dataset_id,
+                      request_id
+                  )
 
-          print("Richieste elaborate:", len(results))
-          print("Rapporto salvato")
+                  time.sleep(2)
+
+              except urllib.error.HTTPError as error:
+                  report["submissions"].append({
+                      "dataset": dataset_id,
+                      "status": "http_error",
+                      "http_code": error.code
+                  })
+
+                  if error.code in (401, 403, 429):
+                      report["warnings"].append(
+                          "Invii fermati per errore API"
+                      )
+                      break
+
+              except Exception as error:
+                  report["submissions"].append({
+                      "dataset": dataset_id,
+                      "status": "unknown_result",
+                      "error_type": type(error).__name__
+                  })
+                  report["warnings"].append(
+                      "Invii fermati: esito incerto"
+                  )
+                  break
+
+          report["submitted_count"] = submitted
+          report["downloaded_count"] = downloaded
+
+          save_json("national_report.json", report)
+
+          print("Reti censite:", len(observations))
+          print("Nuove richieste:", submitted)
+          print("File scaricati:", downloaded)
+          print("Raccolta terminata")
           PY
 
-      - name: Salva rapporto
+      - name: Conserva dati e rapporto
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: meteohub-raccolta-nazionale
+          name: meteohub-national-data
           path: national_collection/
           if-no-files-found: warn
           retention-days: 90
