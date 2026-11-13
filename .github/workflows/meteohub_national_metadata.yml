@@ -1,0 +1,206 @@
+
+name: MeteoHub - Verifica reti nazionali
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verifica:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verifica catalogo e metadati
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import csv
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          BASE = "https://meteohub.agenziaitaliameteo.it"
+          OUT = Path("national_metadata")
+          OUT.mkdir(exist_ok=True)
+
+          def fetch(path, token=None, payload=None):
+              headers = {"Accept": "application/json"}
+              if token:
+                  headers["Authorization"] = "Bearer " + token
+              data = None
+              if payload is not None:
+                  headers["Content-Type"] = "application/json"
+                  data = json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  BASE + path,
+                  data=data,
+                  headers=headers
+              )
+              with urllib.request.urlopen(
+                  req, timeout=60
+              ) as response:
+                  return json.load(response)
+
+          username = os.environ.get("METEOHUB_USERNAME")
+          password = os.environ.get("METEOHUB_PASSWORD")
+
+          if not username or not password:
+              raise RuntimeError("Credenziali mancanti")
+
+          login = fetch(
+              "/auth/login",
+              payload={
+                  "username": username,
+                  "password": password
+              }
+          )
+
+          if isinstance(login, str):
+              token = login
+          elif isinstance(login, dict):
+              token = (
+                  login.get("access_token")
+                  or login.get("token")
+              )
+          else:
+              token = None
+
+          if not token:
+              raise RuntimeError("Login fallito")
+
+          datasets = fetch("/api/datasets", token)
+
+          if not isinstance(datasets, list):
+              raise RuntimeError("Catalogo non valido")
+
+          regions = {
+              "Abruzzo": [],
+              "Basilicata": ["dpcn-basilicata"],
+              "Calabria": ["dpcn-calabria"],
+              "Campania": ["dpcn-campania"],
+              "Emilia-Romagna": [
+                  "agrmet", "boa", "claster", "locali",
+                  "simnbo", "simnpr", "spdsra", "urbane"
+              ],
+              "Friuli-Venezia Giulia": ["arpafvg"],
+              "Lazio": ["dpcn-lazio"],
+              "Liguria": ["dpcn-liguria"],
+              "Lombardia": ["dpcn-lombardia"],
+              "Marche": ["dpcn-marche"],
+              "Molise": ["dpcn-molise"],
+              "Piemonte": ["dpcn-piemonte"],
+              "Puglia": ["dpcn-puglia"],
+              "Sardegna": ["dpcn-sardegna"],
+              "Sicilia": ["dpcn-sicilia"],
+              "Toscana": ["sir-toscana"],
+              "Trentino-Alto Adige": [
+                  "dpcn-bolzanoboze", "open-trentino"
+              ],
+              "Umbria": ["dpcn-umbria"],
+              "Valle d'Aosta": [],
+              "Veneto": ["dpcn-veneto"]
+          }
+
+          by_id = {
+              d["id"]: d for d in datasets
+              if isinstance(d, dict)
+              and isinstance(d.get("id"), str)
+          }
+
+          obs = [
+              d for d in datasets
+              if isinstance(d, dict)
+              and d.get("category") == "OBS"
+          ]
+
+          rows = []
+
+          for region, ids in regions.items():
+              found = [
+                  identifier for identifier in ids
+                  if identifier in by_id
+                  and by_id[identifier].get("category") == "OBS"
+              ]
+
+              rows.append({
+                  "regione": region,
+                  "reti_in_catalogo": len(found),
+                  "identificativi": "; ".join(found),
+                  "stato": (
+                      "presente nel catalogo"
+                      if found
+                      else "nessuna rete regionale identificata"
+                  ),
+                  "dati_recenti_verificati": "NO",
+                  "variabili_verificate": "NO"
+              })
+
+          inventory = []
+
+          for d in obs:
+              inventory.append({
+                  "id": d.get("id"),
+                  "name": d.get("name"),
+                  "description": d.get("description"),
+                  "source": d.get("source"),
+                  "format": d.get("format"),
+                  "bounding": d.get("bounding"),
+                  "is_public": d.get("is_public"),
+                  "supports_variable_browsing":
+                      d.get("supports_variable_browsing"),
+                  "available_fields": sorted(d.keys())
+              })
+
+          report = {
+              "source": "MeteoHub /api/datasets",
+              "total_datasets": len(datasets),
+              "observation_datasets": len(obs),
+              "regions_with_identified_catalog_network":
+                  sum(bool(r["reti_in_catalogo"]) for r in rows),
+              "regions": rows,
+              "observation_inventory": inventory,
+              "limitations": [
+                  "Catalogo non prova disponibilita recente",
+                  "Variabili e stazioni non ancora verificate",
+                  "Reti trasversali non attribuite a regioni"
+              ]
+          }
+
+          (OUT / "national_metadata.json").write_text(
+              json.dumps(
+                  report, indent=2, ensure_ascii=False
+              ),
+              encoding="utf-8"
+          )
+
+          with (
+              OUT / "region_status.csv"
+          ).open("w", newline="", encoding="utf-8") as f:
+              writer = csv.DictWriter(
+                  f, fieldnames=list(rows[0].keys())
+              )
+              writer.writeheader()
+              writer.writerows(rows)
+
+          print("Dataset totali:", len(datasets))
+          print("Dataset osservativi:", len(obs))
+          print(
+              "Regioni con rete identificata:",
+              report["regions_with_identified_catalog_network"],
+              "/ 20"
+          )
+          print("Rapporto nazionale creato")
+          PY
+
+      - name: Conserva rapporto nazionale
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-verifica-reti-nazionali
+          path: national_metadata/
+          if-no-files-found: error
+          retention-days: 90
