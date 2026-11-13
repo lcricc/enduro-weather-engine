@@ -213,7 +213,7 @@ def diagnose_download(filename, token):
             print("JSON valido: SI")
             print(
                 "Tipo struttura:",
-                type(data)._name_
+                type(data).name
             )
 
             if isinstance(data, list):
@@ -285,4 +285,4 @@ def main():
 
         break
 
-    main()
+main()
