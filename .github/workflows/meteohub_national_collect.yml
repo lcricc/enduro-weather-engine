@@ -1,363 +1,74 @@
 
-name: MeteoHub - Raccolta nazionale
+name: MeteoHub - Archivio nazionale
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 1,7,13,19 * * *"
+    - cron: "35 7 * * *"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: meteohub-national-collection
+  group: meteohub-national-archive
   cancel-in-progress: false
 
 jobs:
-  national:
+  archive:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
-      - name: Raccolta nazionale MeteoHub
+      - name: Scarica repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Configura Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepara cartelle
+        run: |
+          mkdir -p data/observations/meteohub
+          mkdir -p data/observations/normalized
+
+      - name: Scarica estrazioni completate
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
         run: |
-          python - <<'PY'
-          import os
-          import json
-          import time
-          import urllib.request
-          import urllib.error
-          from pathlib import Path
-          from datetime import datetime, timedelta, timezone
-          from urllib.parse import quote
+          python meteohub_collect.py
 
-          BASE = "https://meteohub.agenziaitaliameteo.it"
-          OUT = Path("national_collection")
-          DATA = OUT / "observations"
-          DATA.mkdir(parents=True, exist_ok=True)
+      - name: Normalizza osservazioni
+        run: |
+          python meteohub_normalize.py \
+            data/observations/meteohub \
+            --output data/observations/normalized
 
-          MAX_SUBMISSIONS = 8
-          MAX_DOWNLOADS = 12
-          MAX_FILE_BYTES = 20 * 1024 * 1024
+      - name: Salva dati nel repository
+        run: |
+          git config user.name "enduro-weather-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          def api(path, token=None, payload=None,
-                  binary=False):
-              headers = {"Accept": "application/json"}
-              if token:
-                  headers["Authorization"] = "Bearer " + token
+          git add -A data/observations/meteohub
+          git add -A data/observations/normalized
 
-              body = None
-              if payload is not None:
-                  body = json.dumps(payload).encode()
-                  headers["Content-Type"] = "application/json"
+          if git diff --cached --quiet; then
+            echo "Nessun nuovo dato da salvare"
+          else
+            git commit -m "Aggiorna osservazioni MeteoHub"
+            git push
+          fi
 
-              request = urllib.request.Request(
-                  BASE + path,
-                  data=body,
-                  headers=headers,
-                  method="POST" if body is not None else "GET"
-              )
-
-              with urllib.request.urlopen(
-                  request, timeout=120
-              ) as response:
-                  if binary:
-                      content = response.read(
-                          MAX_FILE_BYTES + 1
-                      )
-                      if len(content) > MAX_FILE_BYTES:
-                          raise ValueError("File troppo grande")
-                      return content
-
-                  content = response.read()
-                  return json.loads(content) if content else {}
-
-          def save_json(name, value):
-              (OUT / name).write_text(
-                  json.dumps(
-                      value,
-                      ensure_ascii=False,
-                      indent=2,
-                      default=str
-                  ),
-                  encoding="utf-8"
-              )
-
-          username = os.environ["METEOHUB_USERNAME"]
-          password = os.environ["METEOHUB_PASSWORD"]
-
-          login = api(
-              "/auth/login",
-              payload={
-                  "username": username,
-                  "password": password
-              }
-          )
-
-          token = (
-              login if isinstance(login, str)
-              else login.get("access_token")
-              or login.get("token")
-          )
-
-          if not token:
-              raise RuntimeError("Autenticazione fallita")
-
-          datasets = api("/api/datasets", token)
-          requests = api("/api/requests", token)
-
-          if not isinstance(datasets, list):
-              raise RuntimeError("Catalogo non valido")
-          if not isinstance(requests, list):
-              raise RuntimeError("Richieste non valide")
-
-          observations = sorted(
-              [
-                  d for d in datasets
-                  if isinstance(d, dict)
-                  and d.get("category") == "OBS"
-                  and isinstance(d.get("id"), str)
-              ],
-              key=lambda d: d["id"]
-          )
-
-          reference = next(
-              (
-                  r for r in requests
-                  if isinstance(r, dict)
-                  and str(r.get("id")) == "5835976"
-              ),
-              None
-          )
-
-          if not reference or not isinstance(
-              reference.get("args"), dict
-          ):
-              raise RuntimeError(
-                  "Richiesta Basilicata di riferimento mancante"
-              )
-
-          now = datetime.now(timezone.utc)
-          end = now.replace(
-              hour=0, minute=0,
-              second=0, microsecond=0
-          ) - timedelta(days=1)
-          start = end - timedelta(days=1)
-
-          date_tag = start.strftime("%Y%m%d")
-
-          existing_names = {
-              r.get("name")
-              for r in requests
-              if isinstance(r, dict)
-              and isinstance(r.get("name"), str)
-          }
-
-          report = {
-              "generated_at": now.isoformat(),
-              "period": {
-                  "from": start.isoformat(),
-                  "to": end.isoformat()
-              },
-              "networks_found": len(observations),
-              "submissions": [],
-              "downloads": [],
-              "warnings": []
-          }
-
-          # PRIMA: recupera estrazioni completate.
-          downloaded = 0
-
-          for r in requests:
-              if downloaded >= MAX_DOWNLOADS:
-                  break
-
-              if not isinstance(r, dict):
-                  continue
-
-              name = str(r.get("name") or "")
-              if not name.startswith("ENDURO_NATIONAL_"):
-                  continue
-
-              status = str(
-                  r.get("status") or ""
-              ).lower()
-
-              if status not in (
-                  "completed", "complete",
-                  "finished", "done", "success"
-              ):
-                  continue
-
-              filename = r.get("fileoutput")
-              if not isinstance(filename, str):
-                  continue
-
-              filename = filename.replace("\\", "/").split("/")[-1]
-
-              if not filename or filename in (".", ".."):
-                  continue
-
-              request_id = str(r.get("id") or "unknown")
-
-              try:
-                  content = api(
-                      "/api/data/" + quote(filename, safe=""),
-                      token,
-                      binary=True
-                  )
-
-                  if not content:
-                      raise ValueError("File vuoto")
-
-                  destination = DATA / (
-                      "request_" + request_id + ".bin"
-                  )
-                  destination.write_bytes(content)
-
-                  report["downloads"].append({
-                      "request_id": request_id,
-                      "bytes": len(content),
-                      "saved_as": destination.name,
-                      "status": "downloaded"
-                  })
-                  downloaded += 1
-
-              except Exception as error:
-                  report["downloads"].append({
-                      "request_id": request_id,
-                      "status": "download_error",
-                      "error_type": type(error).__name__
-                  })
-
-          # SECONDA FASE: invia fino a 8 nuove richieste.
-          submitted = 0
-
-          for dataset in observations:
-              dataset_id = dataset["id"]
-
-              request_name = (
-                  "ENDURO_NATIONAL_"
-                  + dataset_id.upper().replace("-", "_")
-                  + "_" + date_tag
-              )
-
-              if request_name in existing_names:
-                  report["submissions"].append({
-                      "dataset": dataset_id,
-                      "status": "already_exists"
-                  })
-                  continue
-
-              if submitted >= MAX_SUBMISSIONS:
-                  report["submissions"].append({
-                      "dataset": dataset_id,
-                      "status": "queued_next_run"
-                  })
-                  continue
-
-              args = json.loads(
-                  json.dumps(reference["args"])
-              )
-
-              args["dataset_names"] = [dataset_id]
-              args["reftime"] = {
-                  "from": start.strftime(
-                      "%Y-%m-%dT%H:%M:%SZ"
-                  ),
-                  "to": end.strftime(
-                      "%Y-%m-%dT%H:%M:%SZ"
-                  )
-              }
-
-              payload = {
-                  **args,
-                  "request_name": request_name
-              }
-
-              try:
-                  response = api(
-                      "/api/data",
-                      token,
-                      payload=payload
-                  )
-
-                  request_id = (
-                      response.get("request_id")
-                      if isinstance(response, dict)
-                      else None
-                  )
-
-                  if request_id is None:
-                      report["submissions"].append({
-                          "dataset": dataset_id,
-                          "status": "unconfirmed_response"
-                      })
-                      report["warnings"].append(
-                          "Verificare richieste prima di rilanciare"
-                      )
-                      break
-
-                  existing_names.add(request_name)
-                  submitted += 1
-
-                  report["submissions"].append({
-                      "dataset": dataset_id,
-                      "status": "submitted",
-                      "request_id": request_id
-                  })
-
-                  print(
-                      "INVIATA",
-                      dataset_id,
-                      request_id
-                  )
-
-                  time.sleep(2)
-
-              except urllib.error.HTTPError as error:
-                  report["submissions"].append({
-                      "dataset": dataset_id,
-                      "status": "http_error",
-                      "http_code": error.code
-                  })
-
-                  if error.code in (401, 403, 429):
-                      report["warnings"].append(
-                          "Invii fermati per errore API"
-                      )
-                      break
-
-              except Exception as error:
-                  report["submissions"].append({
-                      "dataset": dataset_id,
-                      "status": "unknown_result",
-                      "error_type": type(error).__name__
-                  })
-                  report["warnings"].append(
-                      "Invii fermati: esito incerto"
-                  )
-                  break
-
-          report["submitted_count"] = submitted
-          report["downloaded_count"] = downloaded
-
-          save_json("national_report.json", report)
-
-          print("Reti censite:", len(observations))
-          print("Nuove richieste:", submitted)
-          print("File scaricati:", downloaded)
-          print("Raccolta terminata")
-          PY
-
-      - name: Conserva dati e rapporto
+      - name: Conserva copia di sicurezza
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: meteohub-national-data
-          path: national_collection/
+          name: meteohub-archivio-nazionale
+          path: |
+            data/observations/meteohub/
+            data/observations/normalized/
           if-no-files-found: warn
           retention-days: 90
