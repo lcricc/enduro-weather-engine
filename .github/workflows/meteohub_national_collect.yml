@@ -1,0 +1,197 @@
+
+name: MeteoHub - Raccolta nazionale
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: "Invia richieste reali? false = simulazione"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  national:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepara richieste nazionali
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+          SUBMIT: ${{ inputs.submit }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+          import urllib.error
+          from pathlib import Path
+          from datetime import datetime, timedelta, timezone
+
+          BASE = "https://meteohub.agenziaitaliameteo.it"
+          OUT = Path("national_collection")
+          OUT.mkdir(exist_ok=True)
+
+          def api(path, token=None, payload=None):
+              headers = {"Accept": "application/json"}
+              if token:
+                  headers["Authorization"] = "Bearer " + token
+              data = None
+              if payload is not None:
+                  headers["Content-Type"] = "application/json"
+                  data = json.dumps(payload).encode()
+              req = urllib.request.Request(
+                  BASE + path,
+                  headers=headers,
+                  data=data,
+                  method="POST" if data else "GET"
+              )
+              with urllib.request.urlopen(
+                  req, timeout=60
+              ) as response:
+                  raw = response.read().decode()
+                  try:
+                      return json.loads(raw)
+                  except ValueError:
+                      return {"response": raw[:500]}
+
+          login = api(
+              "/auth/login",
+              payload={
+                  "username": os.environ["METEOHUB_USERNAME"],
+                  "password": os.environ["METEOHUB_PASSWORD"]
+              }
+          )
+
+          token = (
+              login if isinstance(login, str)
+              else login.get("access_token")
+              or login.get("token")
+          )
+          if not token:
+              raise RuntimeError("Login fallito")
+
+          requests = api("/api/requests", token)
+          datasets = api("/api/datasets", token)
+
+          if not isinstance(requests, list):
+              raise RuntimeError("Richieste non valide")
+
+          available = {
+              d.get("id") for d in datasets
+              if isinstance(d, dict)
+          }
+
+          original = next(
+              (
+                  r for r in requests
+                  if isinstance(r, dict)
+                  and r.get("id") == 5835976
+              ),
+              None
+          )
+
+          if original is None:
+              raise RuntimeError(
+                  "Richiesta Basilicata 5835976 non trovata"
+              )
+
+          args = original.get("args")
+          if not isinstance(args, dict):
+              raise RuntimeError("Parametri originali mancanti")
+
+          now = datetime.now(timezone.utc)
+          end = now.replace(
+              minute=0, second=0, microsecond=0
+          )
+          start = end - timedelta(days=1)
+
+          targets = [
+              ("Lazio", "dpcn-lazio"),
+              ("Umbria", "dpcn-umbria")
+          ]
+
+          results = []
+          submit = os.environ.get(
+              "SUBMIT", "false"
+          ).lower() == "true"
+
+          for region, dataset in targets:
+              if dataset not in available:
+                  results.append({
+                      "region": region,
+                      "dataset": dataset,
+                      "status": "dataset_not_found"
+                  })
+                  continue
+
+              parameters = json.loads(json.dumps(args))
+              parameters["dataset_names"] = [dataset]
+              parameters["reftime"] = {
+                  "from": start.strftime(
+                      "%Y-%m-%dT%H:%M:%SZ"
+                  ),
+                  "to": end.strftime(
+                      "%Y-%m-%dT%H:%M:%SZ"
+                  )
+              }
+
+              # La forma del payload di creazione
+              # non è ancora verificata.
+              # Evitiamo invii con schema ipotizzato.
+              entry = {
+                  "region": region,
+                  "dataset": dataset,
+                  "status": "prepared",
+                  "parameters": parameters
+              }
+
+              if submit:
+                  entry["status"] = "submission_blocked"
+                  entry["reason"] = (
+                      "POST payload schema not yet verified"
+                  )
+
+              results.append(entry)
+
+          report = {
+              "mode": (
+                  "submission_safety_check"
+                  if submit else "dry_run"
+              ),
+              "reference_request_id": 5835976,
+              "targets": results,
+              "note": (
+                  "No extraction requests submitted. "
+                  "Creation schema must be confirmed."
+              )
+          }
+
+          (OUT / "national_collection.json").write_text(
+              json.dumps(
+                  report, indent=2, ensure_ascii=False
+              ),
+              encoding="utf-8"
+          )
+
+          print("Reti preparate:", len(results))
+          for item in results:
+              print(
+                  item["region"],
+                  item["dataset"],
+                  item["status"]
+              )
+          print("Rapporto creato")
+          PY
+
+      - name: Conserva piano di raccolta
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-raccolta-nazionale
+          path: national_collection/
+          if-no-files-found: error
+          retention-days: 90
