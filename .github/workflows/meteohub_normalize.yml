@@ -1,0 +1,41 @@
+name: MeteoHub - Normalizza osservazioni
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID numerico del run MeteoHub - Diagnostica raccolta che contiene artifact JSONL'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica repository
+        uses: actions/checkout@v4
+      - name: Configura Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Scarica osservazioni dal run indicato
+        uses: actions/download-artifact@v4
+        with:
+          pattern: meteohub-osservazioni-*
+          merge-multiple: true
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: incoming
+      - name: Normalizza e verifica
+        run: python meteohub_normalize.py incoming --output normalized
+      - name: Conserva CSV e rapporto
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-normalizzati-${{ github.run_number }}
+          path: normalized/
+          if-no-files-found: error
+          retention-days: 90
