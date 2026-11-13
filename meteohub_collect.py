@@ -136,7 +136,7 @@ def diagnose_download(filename, token):
         url,
         headers={
             "Authorization": f"Bearer {token}",
-            "Accept": "/"
+            "Accept": "application/json"
         },
         method="GET"
     )
@@ -206,27 +206,43 @@ def diagnose_download(filename, token):
 
     if detected == "POSSIBILE JSON":
         try:
-            data = json.loads(
-                content.decode("utf-8-sig")
-            )
+            decoded = content.decode("utf-8-sig")
+        except UnicodeDecodeError as error:
+            print("UTF-8 valido: NO")
+            print("Errore decodifica, posizione:", error.start)
+        else:
+            print("UTF-8 valido: SI")
+            try:
+                data = json.loads(decoded)
+            except json.JSONDecodeError as error:
+                print("JSON valido: NO")
+                print("Errore JSON:", error.msg)
+                print("Riga errore:", error.lineno)
+                print("Colonna errore:", error.colno)
+                print("Posizione errore:", error.pos)
 
-            print("JSON valido: SI")
-            print(
-                "Tipo struttura:",
-                type(data).name
-            )
-
-            if isinstance(data, list):
-                print(
-                    "Numero elementi:",
-                    len(data)
-                )
-
-        except (
-            UnicodeDecodeError,
-            json.JSONDecodeError
-        ):
-            print("JSON valido: NO")
+                # Verifica senza stampare il contenuto se sono
+                # presenti piu record JSON, uno per riga.
+                lines = [line for line in decoded.splitlines() if line.strip()]
+                print("Righe non vuote:", len(lines))
+                if len(lines) > 1:
+                    valid_lines = 0
+                    for line in lines:
+                        try:
+                            json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        valid_lines += 1
+                    print("Righe JSON valide:", valid_lines)
+                    print("Possibile JSON Lines:",
+                          "SI" if valid_lines == len(lines) else "NO")
+            else:
+                print("JSON valido: SI")
+                print("Tipo struttura:", type(data).__name__)
+                if isinstance(data, list):
+                    print("Numero elementi:", len(data))
+                elif isinstance(data, dict):
+                    print("Numero chiavi:", len(data))
 
     print("Diagnostica download terminata")
 
