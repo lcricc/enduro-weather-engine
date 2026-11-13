@@ -1,0 +1,24 @@
+
+name: MeteoHub - Diagnostica raccolta
+
+on:
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Scarica repository
+        uses: actions/checkout@v4
+
+      - name: Configura Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verifica richieste MeteoHub
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        run: python meteohub_collect.py
