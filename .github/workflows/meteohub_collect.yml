@@ -15,10 +15,33 @@ jobs:
       - name: Configura Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Verifica richieste MeteoHub
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
         run: python meteohub_collect.py
+
+      - name: Verifica file raccolti
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          folder = Path('data/observations/meteohub')
+          files = sorted(folder.glob('*.jsonl')) if folder.exists() else []
+
+          if not files:
+              raise SystemExit('ERRORE: nessun file JSONL da archiviare')
+
+          for file in files:
+              print(f'File da archiviare: {file} ({file.stat().st_size} byte)')
+          PY
+
+      - name: Conserva dati MeteoHub come artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-osservazioni-${{ github.run_number }}
+          path: data/observations/meteohub/*.jsonl
+          if-no-files-found: error
+          retention-days: 90
