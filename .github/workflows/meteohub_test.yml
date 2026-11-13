@@ -7,6 +7,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
       - name: Verifica autenticazione MeteoHub
         env:
@@ -21,11 +22,11 @@ jobs:
 
           base = "https://meteohub.agenziaitaliameteo.it"
 
-          username = os.environ["METEOHUB_USERNAME"]
-          password = os.environ["METEOHUB_PASSWORD"]
+          username = os.environ.get("METEOHUB_USERNAME")
+          password = os.environ.get("METEOHUB_PASSWORD")
 
           if not username or not password:
-              raise RuntimeError("Secrets MeteoHub mancanti")
+              raise RuntimeError("Credenziali MeteoHub mancanti")
 
           payload = json.dumps({
               "username": username,
@@ -48,25 +49,30 @@ jobs:
               ) from None
 
           if isinstance(data, str):
-    token = data
-elif isinstance(data, dict):
-    token = data.get("access_token") or data.get("token")
-else:
-    raise RuntimeError("Formato risposta login non riconosciuto")
+              token = data
+          elif isinstance(data, dict):
+              token = data.get("access_token") or data.get("token")
+          else:
+              raise RuntimeError("Formato risposta login non riconosciuto")
 
           if not token:
-              raise RuntimeError(
-                  "Login ricevuto, formato token da verificare"
-              )
+              raise RuntimeError("Token MeteoHub non trovato")
 
           request = urllib.request.Request(
               base + "/api/requests",
               headers={"Authorization": "Bearer " + token}
           )
 
-          with urllib.request.urlopen(request, timeout=30) as response:
-              if response.status != 200:
-                  raise RuntimeError("Verifica API fallita")
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  status = response.status
+          except urllib.error.HTTPError as error:
+              raise RuntimeError(
+                  f"Verifica API fallita: HTTP {error.code}"
+              ) from None
 
-          print("METEOHUB: CONNESSIONE RIUSCITA")
+          if status == 200:
+              print("METEOHUB: CONNESSIONE RIUSCITA")
+          else:
+              raise RuntimeError("Risposta API inattesa")
           PY
