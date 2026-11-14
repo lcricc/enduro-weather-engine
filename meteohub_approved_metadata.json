@@ -1,1 +1,15 @@
-[]
+
+[
+  {
+    "code": "B12101",
+    "level": [103, 2000, null, null],
+    "timerange": [254, 0, 0],
+    "unit": "K"
+  },
+  {
+    "code": "B11002",
+    "level": [103, 10000, null, null],
+    "timerange": [254, 0, 0],
+    "unit": "m/s"
+  }
+]
