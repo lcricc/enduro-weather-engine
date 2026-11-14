@@ -1,0 +1,15 @@
+{
+  "year": 2025,
+  "eligible_stations": 131,
+  "downloaded_files": 131,
+  "stations_with_observations": 130,
+  "observations": 1043005,
+  "failures": [
+    {
+      "station_id": "16364099999",
+      "station_name": "SERRALTA DI S. VITO",
+      "file_lines": 14,
+      "error": "no valid rows"
+    }
+  ]
+}
