@@ -1,0 +1,123 @@
+
+name: ENDURO Permanent Archive
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: enduro-permanent-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download latest data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          REPO="$GITHUB_REPOSITORY"
+
+          OBS_RUN=$(gh run list \
+            --repo "$REPO" \
+            --workflow meteohub_collect.yml \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          FC_RUN=$(gh run list \
+            --repo "$REPO" \
+            --workflow enduro_meteohub_forecasts.yml \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          test -n "$OBS_RUN"
+          test -n "$FC_RUN"
+
+          mkdir -p staging/observations
+          mkdir -p staging/forecasts
+          mkdir -p archive
+
+          gh run download "$OBS_RUN" \
+            --repo "$REPO" \
+            --pattern 'meteohub-observations-*' \
+            --dir staging/observations
+
+          gh run download "$FC_RUN" \
+            --repo "$REPO" \
+            --pattern 'enduro-meteohub-forecasts-*' \
+            --dir staging/forecasts
+
+          test -n "$(find staging/observations \
+            -name observations_clean.csv -print -quit)"
+
+          test -n "$(find staging/forecasts \
+            -name 'forecasts_meteohub_*.csv.gz' \
+            -print -quit)"
+
+          echo "$OBS_RUN" > archive/observation_run.txt
+          echo "$FC_RUN" > archive/forecast_run.txt
+
+      - name: Prepare archive
+        run: |
+          set -euo pipefail
+
+          tar -czf archive/observations.tar.gz \
+            -C staging observations
+
+          tar -czf archive/forecasts.tar.gz \
+            -C staging forecasts
+
+          cd archive
+
+          sha256sum \
+            observations.tar.gz \
+            forecasts.tar.gz \
+            > SHA256SUMS.txt
+
+          ls -lh
+
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Publish permanent GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="archive-${GITHUB_RUN_ID}"
+          REPO="$GITHUB_REPOSITORY"
+
+          if gh release view "$TAG" \
+            --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release already exists: $TAG"
+            exit 1
+          fi
+
+          gh release create "$TAG" \
+            archive/observations.tar.gz \
+            archive/forecasts.tar.gz \
+            archive/SHA256SUMS.txt \
+            archive/observation_run.txt \
+            archive/forecast_run.txt \
+            --repo "$REPO" \
+            --target "$GITHUB_SHA" \
+            --title "ENDURO Archive $GITHUB_RUN_ID" \
+            --notes "Historical MeteoHub archive. Source workflow run IDs are included. SHA256 checksums are provided." \
+            --latest=false
+
+          echo "Archive published: $TAG"
