@@ -1,0 +1,187 @@
+
+name: ENDURO BUFR Raw Data Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download original MeteoHub data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          RUN_ID=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow meteohub_collect.yml \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          test -n "$RUN_ID"
+
+          mkdir -p downloaded
+
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'meteohub-observations-*' \
+            --dir downloaded
+
+      - name: Inspect original BUFR structures
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from collections import Counter
+
+          root = Path("downloaded")
+          out = Path("data/validation/meteohub/bufr_audit")
+          out.mkdir(parents=True, exist_ok=True)
+
+          targets = {
+              "B12101": "temperature",
+              "B11002": "wind_speed",
+          }
+
+          counts = Counter()
+          examples = {}
+          files = list(root.rglob("request_*.jsonl"))
+
+          for path in files:
+              with path.open(
+                  encoding="utf-8-sig"
+              ) as source:
+                  for line in source:
+                      if not line.strip():
+                          continue
+
+                      try:
+                          record = json.loads(line)
+                      except json.JSONDecodeError:
+                          continue
+
+                      if not isinstance(record, dict):
+                          continue
+
+                      groups = record.get("data", [])
+
+                      if not isinstance(groups, list):
+                          continue
+
+                      for group in groups:
+                          if not isinstance(group, dict):
+                              continue
+
+                          variables = group.get("vars", {})
+
+                          if not isinstance(variables, dict):
+                              continue
+
+                          for code in targets:
+                              if code not in variables:
+                                  continue
+
+                              entry = variables[code]
+
+                              if not isinstance(entry, dict):
+                                  continue
+
+                              level = group.get("level")
+                              timerange = group.get("timerange")
+
+                              signature = json.dumps(
+                                  {
+                                      "code": code,
+                                      "level": level,
+                                      "timerange": timerange,
+                                  },
+                                  sort_keys=True,
+                              )
+
+                              counts[signature] += 1
+
+                              if signature not in examples:
+                                  examples[signature] = {
+                                      "code": code,
+                                      "variable": targets[code],
+                                      "level": level,
+                                      "timerange": timerange,
+                                      "entry_keys": sorted(entry),
+                                      "entry": entry,
+                                      "record_keys": sorted(record),
+                                      "group_keys": sorted(group),
+                                      "network": record.get("network"),
+                                      "date": record.get("date"),
+                                  }
+
+          report = {
+              "engine": "ENDURO WEATHER ENGINE",
+              "audit": "Raw MeteoHub BUFR structures",
+              "source_files": len(files),
+              "combinations": [],
+              "scientific_approval": False,
+          }
+
+          for key, count in counts.most_common():
+              item = dict(examples[key])
+              item["measurements"] = count
+              report["combinations"].append(item)
+
+          destination = out / "bufr_raw_audit.json"
+
+          destination.write_text(
+              json.dumps(
+                  report,
+                  indent=2,
+                  ensure_ascii=False,
+                  default=str,
+              ),
+              encoding="utf-8",
+          )
+
+          print("Original files:", len(files))
+          print("Combinations:", len(counts))
+
+          for item in report["combinations"][:10]:
+              print(
+                  item["code"],
+                  item["measurements"],
+                  "level=", item["level"],
+                  "timerange=", item["timerange"],
+                  "entry_keys=", item["entry_keys"],
+              )
+
+          if not files or not counts:
+              raise RuntimeError(
+                  "No raw BUFR measurements found"
+              )
+
+          print("BUFR raw audit completed")
+          PY
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enduro-bufr-audit-${{ github.run_id }}
+          path: data/validation/meteohub/bufr_audit/
+          if-no-files-found: warn
+          retention-days: 90
