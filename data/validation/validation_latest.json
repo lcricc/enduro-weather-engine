@@ -1,13 +1,109 @@
 {
-  "generated_utc": "2026-11-14T10:43:33.983965+00:00",
+  "generated_utc": "2026-11-14T11:02:30.344774+00:00",
   "observation_files": 2,
   "observation_station_hours": 864819,
   "forecast_rows_scanned": 112832,
   "matched_forecast_rows": 0,
   "metrics": [],
+  "diagnostics": {
+    "forecast_files": 1,
+    "observation_quality": {
+      "rows_scanned": 1564098,
+      "valid_rows": 1564098
+    },
+    "unmatched_forecast_rows": 112832,
+    "excluded_before_matching": 0,
+    "missing_station_hour_pairs": 112832,
+    "match_rate_percent": 0.0,
+    "primary_cause": "forecast_after_station_observations",
+    "reason_counts": {
+      "forecast_after_station_observations": 87376,
+      "station_not_in_observations": 25456
+    },
+    "examples": {
+      "station_not_in_observations": [
+        {
+          "model": "ecmwf_ifs025",
+          "network": "agrmet",
+          "station_id": "023f48d9b5c17f2d",
+          "valid_time_utc": "2026-11-14T10:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "agrmet",
+          "station_id": "023f48d9b5c17f2d",
+          "valid_time_utc": "2026-11-14T11:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "agrmet",
+          "station_id": "023f48d9b5c17f2d",
+          "valid_time_utc": "2026-11-14T12:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "agrmet",
+          "station_id": "023f48d9b5c17f2d",
+          "valid_time_utc": "2026-11-14T13:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "agrmet",
+          "station_id": "023f48d9b5c17f2d",
+          "valid_time_utc": "2026-11-14T14:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        }
+      ],
+      "forecast_after_station_observations": [
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T10:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T11:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T12:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T13:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T14:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        }
+      ]
+    }
+  },
   "notes": [
     "Observation samples aggregated to UTC clock hours",
     "Forecasts compared only with matching station IDs and valid UTC hours",
-    "Metrics are descriptive, not yet a fair common-sample model ranking"
+    "Metrics are descriptive, not yet a fair common-sample model ranking",
+    "Diagnostics do not alter matching or forecast scores",
+    "Timestamp offsets are normalized to UTC",
+    "Naive timestamps are assumed UTC, as in the original validator",
+    "Time differences are diagnostic only; no fuzzy matching is performed"
   ]
 }
