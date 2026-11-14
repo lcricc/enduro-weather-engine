@@ -53,7 +53,22 @@ jobs:
           gh run download "$RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern 'meteohub-observations-*' \
-            --dir data/observations/meteohub
+            --dir downloaded
+
+          FOUND=$(find downloaded \
+            -type f \
+            -name observations_clean.csv \
+            -print -quit)
+
+          if [ -z "$FOUND" ]; then
+            echo "Clean observations not found"
+            exit 1
+          fi
+
+          SOURCE_DIR=$(dirname "$(dirname "$FOUND")")
+
+          cp -R "$SOURCE_DIR"/. \
+            data/observations/meteohub/
 
           test -s \
             data/observations/meteohub/clean/observations_clean.csv
