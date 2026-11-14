@@ -8,50 +8,202 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: enduro-scientific-validation
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Download latest observations and forecasts
+      - name: Download historical GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
 
-          OBS_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow meteohub_collect.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          mkdir -p historical/observations
+          mkdir -p historical/forecasts
+          mkdir -p data/forecasts/national
+          mkdir -p data/observations/meteohub/clean
 
-          FC_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow enduro_meteohub_forecasts.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --limit 100 \
+            --json tagName \
+            --jq '.[].tagName' \
+            > /tmp/enduro_tags.txt
 
-          test -n "$OBS_RUN" && test -n "$FC_RUN"
+          OBS_COUNT=0
+          FC_COUNT=0
 
-          mkdir -p downloaded/obs downloaded/fc data/observations/meteohub/clean data/forecasts/national
+          while IFS= read -r TAG; do
+            case "$TAG" in
 
-          gh run download "$OBS_RUN" --repo "$GITHUB_REPOSITORY" --pattern 'meteohub-observations-*' --dir downloaded/obs
+              meteohub-observations-*)
+                DEST="historical/observations/$TAG"
+                mkdir -p "$DEST"
 
-          gh run download "$FC_RUN" --repo "$GITHUB_REPOSITORY" --pattern 'enduro-meteohub-forecasts-*' --dir downloaded/fc
+                gh release download "$TAG" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --pattern 'observations-*.tar.gz' \
+                  --dir "$DEST"
 
-          OBS=$(find downloaded/obs -type f -name observations_clean.csv -print -quit)
+                for FILE in "$DEST"/*.tar.gz; do
+                  test -f "$FILE" || continue
+                  tar -xzf "$FILE" -C "$DEST"
+                done
 
-          test -n "$OBS"
+                OBS_COUNT=$((OBS_COUNT + 1))
+                ;;
 
-          cp "$OBS" data/observations/meteohub/clean/observations_clean.csv
+              meteohub-forecasts-*)
+                DEST="historical/forecasts/$TAG"
+                mkdir -p "$DEST"
 
-          find downloaded/fc -type f -name 'forecasts_meteohub_*.csv.gz' -exec cp {} data/forecasts/national/ \;
+                gh release download "$TAG" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --pattern 'forecasts-*.tar.gz' \
+                  --dir "$DEST"
 
-          test -n "$(find data/forecasts/national -name 'forecasts_meteohub_*.csv.gz' -print -quit)"
+                for FILE in "$DEST"/*.tar.gz; do
+                  test -f "$FILE" || continue
+                  tar -xzf "$FILE" -C "$DEST"
+                done
+
+                FC_COUNT=$((FC_COUNT + 1))
+                ;;
+
+            esac
+          done < /tmp/enduro_tags.txt
+
+          echo "Observation releases: $OBS_COUNT"
+          echo "Forecast releases: $FC_COUNT"
+
+          test "$OBS_COUNT" -gt 0
+          test "$FC_COUNT" -gt 0
+
+      - name: Merge historical observations
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          files = sorted(
+              Path("historical/observations").rglob(
+                  "observations_clean.csv"
+              )
+          )
+
+          if not files:
+              raise RuntimeError("No historical observations")
+
+          output = Path(
+              "data/observations/meteohub/clean/"
+              "observations_clean.csv"
+          )
+
+          seen = set()
+          total = 0
+          unique = 0
+          fields = None
+
+          with output.open(
+              "w", newline="", encoding="utf-8"
+          ) as destination:
+
+              writer = None
+
+              for path in files:
+                  with path.open(
+                      newline="", encoding="utf-8-sig"
+                  ) as source:
+
+                      reader = csv.DictReader(source)
+
+                      if fields is None:
+                          fields = reader.fieldnames
+                          if not fields:
+                              raise ValueError(
+                                  "Missing CSV header"
+                              )
+                          writer = csv.DictWriter(
+                              destination,
+                              fieldnames=fields
+                          )
+                          writer.writeheader()
+
+                      if reader.fieldnames != fields:
+                          raise ValueError(
+                              f"CSV schema mismatch: {path}"
+                          )
+
+                      for row in reader:
+                          total += 1
+                          key = tuple(
+                              row.get(field, "")
+                              for field in fields
+                          )
+
+                          if key in seen:
+                              continue
+
+                          seen.add(key)
+                          writer.writerow(row)
+                          unique += 1
+
+          print("Observation files:", len(files))
+          print("Total rows:", total)
+          print("Unique rows:", unique)
+          PY
+
+      - name: Prepare historical forecasts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          COUNT=0
+
+          while IFS= read -r -d '' FILE; do
+            NAME=$(basename "$FILE")
+            DEST="data/forecasts/national/$NAME"
+
+            if [ -f "$DEST" ]; then
+              if ! cmp -s "$FILE" "$DEST"; then
+                echo "Conflicting forecast: $NAME"
+                exit 1
+              fi
+            else
+              cp "$FILE" "$DEST"
+              COUNT=$((COUNT + 1))
+            fi
+
+          done < <(
+            find historical/forecasts \
+              -type f \
+              -name 'forecasts_meteohub_*.csv.gz' \
+              -print0
+          )
+
+          echo "Historical forecast files: $COUNT"
+          test "$COUNT" -gt 0
 
       - name: Run scientific validation
         run: python validate_meteohub.py
 
-      - name: Upload validation report
+      - name: Upload scientific validation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
