@@ -1,0 +1,57 @@
+
+name: ENDURO Validate Forecasts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 8 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: enduro-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+
+      - name: Retrieve forecast archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin forecast-archive
+          mkdir -p data/forecasts/national
+          git archive FETCH_HEAD data/forecasts/national | tar -xf -
+
+      - name: Validate archived forecasts against NOAA observations
+        run: python validate_forecasts.py
+
+      - name: Commit validation report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/validation/validation_latest.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update forecast validation metrics'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: data/validation/validation_latest.json
+          if-no-files-found: warn
