@@ -1,8 +1,8 @@
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ENDURO WEATHER ENGINE</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -15,23 +15,25 @@ small{color:#9eafad}
 main{max-width:900px;margin:auto;padding:14px}
 #map{height:340px;border-radius:12px;overflow:hidden}
 .panel{background:#1c292c;border-radius:12px;padding:16px;margin-top:14px}
-button{background:#00a58f;color:white;border:0;border-radius:9px;padding:12px 16px;font-weight:700}
+button{background:#00a58f;color:white;border:0;border-radius:9px;padding:12px 16px;font-weight:700;cursor:pointer}
 button:disabled{opacity:.5}
 .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .metric{background:#253639;border-radius:10px;padding:12px;text-align:center}
-.metric b{display:block;font-size:22px;margin-top:8px}
+.metric b{display:block;font-size:20px;margin-top:8px}
 .metric span{font-size:12px;color:#b6c8c5}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{padding:10px 5px;border-bottom:1px solid #344548;text-align:center}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:10px 5px;border-bottom:1px solid #344548;text-align:center;white-space:nowrap}
 th{color:#9ed9ce}
 .scroll{overflow-x:auto}
 #status{font-size:13px;color:#b5c9c5}
+select{width:100%;padding:12px;border-radius:9px;background:#253639;color:white;border:1px solid #45605d;margin-top:10px}
+.note{font-size:12px;color:#b5c9c5;line-height:1.5}
 </style>
 </head>
 <body>
 <header>
 <h1>ENDURO WEATHER ENGINE</h1>
-<small>Previsioni multimodello · Italia</small>
+<small>Previsioni multimodello · Italia · Versione 0.2</small>
 </header>
 <main>
 <div id="map"></div>
@@ -43,29 +45,54 @@ th{color:#9ed9ce}
 <div class="panel">
 <strong>Previsione multimodello</strong>
 <p><small id="models">In attesa dei modelli</small></p>
-<div class="metrics">
+<label for="hourSelect"><small>Ora da analizzare</small></label>
+<select id="hourSelect" disabled>
+<option>Calcola prima una previsione</option>
+</select>
+<div class="metrics" style="margin-top:14px">
 <div class="metric"><span>Temperatura</span><b id="temp">—</b></div>
 <div class="metric"><span>Pioggia</span><b id="rain">—</b></div>
 <div class="metric"><span>Vento</span><b id="wind">—</b></div>
 </div>
 </div>
 <div class="panel">
+<strong>Concordanza fra modelli</strong>
+<p class="note" id="agreement">In attesa dei dati.</p>
+<div class="metrics">
+<div class="metric"><span>Intervallo temperatura</span><b id="trange">—</b></div>
+<div class="metric"><span>Intervallo pioggia</span><b id="prange">—</b></div>
+<div class="metric"><span>Intervallo vento</span><b id="wrange">—</b></div>
+</div>
+<p><small>Previsioni individuali dei modelli</small></p>
+<div class="scroll">
+<table>
+<thead>
+<tr><th>Modello</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr>
+</thead>
+<tbody id="comparison"></tbody>
+</table>
+</div>
+</div>
+<div class="panel">
 <strong>Prossime 24 ore</strong>
 <div class="scroll">
 <table>
-<thead><tr><th>Ora</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr></thead>
+<thead>
+<tr><th>Ora</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr>
+</thead>
 <tbody id="hours"></tbody>
 </table>
 </div>
 </div>
 <div class="panel">
-<small>
-Versione sperimentale. I valori sono medie dei modelli
-disponibili, non ancora calibrate sulle osservazioni.
-La pioggia indica quantità prevista, non probabilità.
-Non utilizzare questa versione come unica fonte per
-decisioni di sicurezza in montagna.
-</small>
+<p class="note">
+Versione sperimentale. I valori rappresentano medie aritmetiche
+dei modelli disponibili, non ancora calibrate sulle osservazioni.
+Gli intervalli mostrano la dispersione fra modelli, non la
+probabilità o l'incertezza totale della previsione.
+Non utilizzare questa versione come unica fonte per decisioni
+di sicurezza in montagna.
+</p>
 </div>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -80,34 +107,52 @@ const modelNames=[
 "gem_seamless",
 "arpege_world"
 ];
+const el=id=>document.getElementById(id);
 let lat=42.5,lon=12.5;
+let activeModels=[];
+let forecastRows=[];
 const map=L.map("map").setView([lat,lon],6);
 L.tileLayer(
 "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 {attribution:"© OpenStreetMap contributors",maxZoom:18}
 ).addTo(map);
 const marker=L.marker([lat,lon]).addTo(map);
-const el=id=>document.getElementById(id);
 function select(p){
-lat=p.lat;lon=p.lng;
+lat=p.lat;
+lon=p.lng;
 marker.setLatLng(p);
 el("location").textContent=
 `Lat ${lat.toFixed(4)} · Lon ${lon.toFixed(4)}`;
+el("status").textContent="Posizione selezionata. Calcola la previsione.";
 }
 map.on("click",e=>select(e.latlng));
-select({lat, lng:lon});
-const average=a=>{
-const valid=a.filter(Number.isFinite);
+select({lat,lng:lon});
+function average(values){
+const valid=values.filter(Number.isFinite);
 return valid.length?
-valid.reduce((x,y)=>x+y,0)/valid.length:null;
-};
-function format(n,d=1){
-return n===null?"—":n.toFixed(d);
+valid.reduce((a,b)=>a+b,0)/valid.length:null;
 }
-async function getModel(model){
+function format(n,d=1){
+return Number.isFinite(n)?n.toFixed(d):"—";
+}
+function range(values,unit){
+const valid=values.filter(Number.isFinite);
+return valid.length?
+format(Math.min(...valid))+"–"+format(Math.max(...valid))+unit:"—";
+}
+function addRow(body,values){
+const tr=document.createElement("tr");
+for(const value of values){
+const td=document.createElement("td");
+td.textContent=value;
+tr.appendChild(td);
+}
+body.appendChild(tr);
+}
+async function getModel(model,latitude,longitude){
 const params=new URLSearchParams({
-latitude:lat,
-longitude:lon,
+latitude,
+longitude,
 hourly:"temperature_2m,precipitation,wind_speed_10m",
 models:model,
 forecast_days:"3",
@@ -118,74 +163,111 @@ const response=await fetch(
 );
 if(!response.ok)throw Error(model+" HTTP "+response.status);
 const data=await response.json();
-if(data.error)throw Error(data.reason);
+if(data.error)throw Error(data.reason||"Errore API");
 if(!data.hourly?.time)throw Error("Dati mancanti");
 return {model,hourly:data.hourly};
+}
+function modelAtTime(item,time){
+const h=item.hourly;
+const i=h.time.indexOf(time);
+if(i<0)return {model:item.model,t:null,p:null,w:null};
+return {
+model:item.model,
+t:h.temperature_2m?.[i],
+p:h.precipitation?.[i],
+w:h.wind_speed_10m?.[i]
+};
+}
+function renderHour(time){
+const values=activeModels.map(m=>modelAtTime(m,time));
+el("temp").textContent=
+format(average(values.map(v=>v.t)))+"°";
+el("rain").textContent=
+format(average(values.map(v=>v.p)))+" mm";
+el("wind").textContent=
+format(average(values.map(v=>v.w)),0);
+el("trange").textContent=range(values.map(v=>v.t),"°");
+el("prange").textContent=range(values.map(v=>v.p)," mm");
+el("wrange").textContent=range(values.map(v=>v.w)," km/h");
+el("agreement").textContent=
+"Minimo e massimo previsti dai modelli per l'ora selezionata. Un intervallo più stretto indica maggiore concordanza, non necessariamente maggiore accuratezza.";
+el("comparison").innerHTML="";
+for(const v of values){
+addRow(el("comparison"),[
+v.model,
+format(v.t),
+format(v.p),
+format(v.w,0)
+]);
+}
+}
+function currentItalianHour(){
+const parts=new Intl.DateTimeFormat("en-GB",{
+timeZone:"Europe/Rome",
+year:"numeric",month:"2-digit",day:"2-digit",
+hour:"2-digit",hourCycle:"h23"
+}).formatToParts(new Date());
+const part=type=>parts.find(x=>x.type===type)?.value;
+return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:00`;
 }
 async function calculate(){
 const button=el("run");
 button.disabled=true;
+const latitude=lat,longitude=lon;
 el("status").textContent="Interrogazione degli otto modelli...";
-el("temp").textContent="—";
-el("rain").textContent="—";
-el("wind").textContent="—";
+el("models").textContent="Elaborazione in corso";
+el("hourSelect").disabled=true;
+el("comparison").innerHTML="";
 el("hours").innerHTML="";
+for(const id of ["temp","rain","wind","trange","prange","wrange"])
+el(id).textContent="—";
 try{
 const results=await Promise.allSettled(
-modelNames.map(getModel)
+modelNames.map(m=>getModel(m,latitude,longitude))
 );
-const good=results.filter(r=>r.status==="fulfilled")
+activeModels=results
+.filter(r=>r.status==="fulfilled")
 .map(r=>r.value);
-if(!good.length)throw Error("Nessun modello disponibile");
-const grouped=new Map();
-for(const {hourly} of good){
-hourly.time.forEach((time,i)=>{
-if(!grouped.has(time))grouped.set(time,[]);
-grouped.get(time).push({
-t:hourly.temperature_2m?.[i],
-p:hourly.precipitation?.[i],
-w:hourly.wind_speed_10m?.[i]
-});
-});
-}
-const now=new Date();
-const currentHour=now.getHours();
-const today=new Intl.DateTimeFormat("sv-SE",{
-timeZone:"Europe/Rome",year:"numeric",
-month:"2-digit",day:"2-digit"
-}).format(now);
-const localNow=today+"T"+String(currentHour).padStart(2,"0")+":00";
-const upcoming=[...grouped.entries()]
-.filter(([time])=>time>=localNow)
-.sort((a,b)=>a[0].localeCompare(b[0]))
-.slice(0,24);
-const rows=upcoming.map(([time,values])=>({
+if(!activeModels.length)
+throw Error("Nessun modello disponibile");
+const times=new Set();
+for(const m of activeModels)
+for(const t of m.hourly.time)times.add(t);
+const now=currentItalianHour();
+const ordered=[...times].filter(t=>t>=now).sort();
+const next=ordered.slice(0,24);
+if(!next.length)throw Error("Nessuna ora futura disponibile");
+forecastRows=next.map(time=>{
+const values=activeModels.map(m=>modelAtTime(m,time));
+return {
 time,
-t:average(values.map(x=>x.t)),
-p:average(values.map(x=>x.p)),
-w:average(values.map(x=>x.w))
-}));
-if(!rows.length)throw Error("Ore previsionali non disponibili");
-const first=rows[0];
-el("temp").textContent=format(first.t)+"°";
-el("rain").textContent=format(first.p)+" mm";
-el("wind").textContent=format(first.w,0);
-el("models").textContent=
-`${good.length}/8 modelli disponibili`;
-el("status").textContent=
-`Previsione aggiornata · ${good.length} modelli`;
-for(const r of rows){
-const tr=document.createElement("tr");
-for(const value of [
+t:average(values.map(v=>v.t)),
+p:average(values.map(v=>v.p)),
+w:average(values.map(v=>v.w))
+};
+});
+el("hourSelect").innerHTML="";
+for(const r of forecastRows){
+const option=document.createElement("option");
+option.value=r.time;
+option.textContent=r.time.replace("T"," · ");
+el("hourSelect").appendChild(option);
+}
+el("hourSelect").disabled=false;
+renderHour(forecastRows[0].time);
+for(const r of forecastRows){
+addRow(el("hours"),[
 r.time.slice(5,10)+" "+r.time.slice(11,16),
 format(r.t),format(r.p),format(r.w,0)
-]){
-const td=document.createElement("td");
-td.textContent=value;
-tr.appendChild(td);
+]);
 }
-el("hours").appendChild(tr);
-}
+el("models").textContent=
+`${activeModels.length}/8 modelli disponibili`;
+const failed=results
+.filter(r=>r.status==="rejected").length;
+el("status").textContent=
+`Previsione elaborata · ${activeModels.length} modelli riusciti`+
+(failed?` · ${failed} non disponibili`:"");
 }catch(e){
 el("status").textContent="Errore: "+e.message;
 }finally{
@@ -193,6 +275,7 @@ button.disabled=false;
 }
 }
 el("run").addEventListener("click",calculate);
+el("hourSelect").addEventListener("change",e=>renderHour(e.target.value));
 </script>
 </body>
 </html>
