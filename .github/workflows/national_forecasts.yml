@@ -1,0 +1,40 @@
+
+name: ENDURO National Multimodel Forecasts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 0,6,12,18 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enduro-national-forecasts
+  cancel-in-progress: false
+
+jobs:
+  national-forecasts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Collect national forecasts
+        run: python collect_national_forecasts.py
+
+      - name: Archive forecasts and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: national-forecasts-${{ github.run_id }}
+          path: data/forecasts/national/
+          if-no-files-found: warn
+          retention-days: 90
