@@ -1,6 +1,6 @@
 
 #!/usr/bin/env python3
-"""ENDURO - Richieste automatiche a tutte le reti OBS MeteoHub."""
+"""ENDURO WEATHER ENGINE - Richieste MeteoHub nazionali."""
 
 import json
 import os
@@ -10,8 +10,17 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 BASE = "https://meteohub.agenziaitaliameteo.it"
+
 BATCH_SIZE = 7
-BATCHES_PER_DAY = 4
+LARGE_NETWORKS = {
+    "dpcn-puglia",
+    "dpcn-sardegna",
+    "dpcn-sicilia",
+    "dpcn-umbria",
+}
+
+SHORT_HOURS = 3
+NORMAL_HOURS = 26
 
 
 def api(path, token=None, payload=None):
@@ -21,20 +30,29 @@ def api(path, token=None, payload=None):
         headers["Authorization"] = f"Bearer {token}"
 
     body = None
+
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
 
-    req = urllib.request.Request(
+    request = urllib.request.Request(
         BASE + path,
         data=body,
         headers=headers,
         method="POST" if body is not None else "GET",
     )
 
-    with urllib.request.urlopen(req, timeout=90) as response:
+    with urllib.request.urlopen(
+        request, timeout=90
+    ) as response:
         content = response.read()
         return json.loads(content) if content else {}
+
+
+def utc_string(value):
+    return value.isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
 
 
 def main():
@@ -47,7 +65,8 @@ def main():
     )
 
     token = (
-        auth if isinstance(auth, str)
+        auth
+        if isinstance(auth, str)
         else auth.get("access_token") or auth.get("token")
     )
 
@@ -71,26 +90,20 @@ def main():
         and isinstance(item.get("id"), str)
     })
 
-    print("Reti osservative disponibili:", len(networks))
-
     if not networks:
-        raise RuntimeError("Nessun dataset OBS disponibile")
+        raise RuntimeError("Nessuna rete OBS disponibile")
 
     now = datetime.now(timezone.utc)
-
-    # Quattro gruppi quotidiani, massimo sette reti per gruppo.
     slot = now.hour // 6
-    start_index = slot * BATCH_SIZE
+
     selected = networks[
-        start_index:start_index + BATCH_SIZE
+        slot * BATCH_SIZE:
+        (slot + 1) * BATCH_SIZE
     ]
 
-    # Recupera le ultime 26 ore per ogni rete.
-    # La sovrapposizione facilita la gestione di ritardi.
     end = now - timedelta(minutes=30)
-    start = end - timedelta(hours=26)
-
     stamp = now.strftime("%Y%m%d")
+
     existing_names = {
         str(item.get("request_name", ""))
         for item in requests
@@ -101,11 +114,27 @@ def main():
     skipped = 0
     failures = 0
 
+    print("Reti OBS disponibili:", len(networks))
+    print("Reti selezionate:", len(selected))
+
     for network in selected:
-        name = f"enduro-auto-{stamp}-{network}"
+
+        if network in LARGE_NETWORKS:
+            hours = SHORT_HOURS
+        else:
+            hours = NORMAL_HOURS
+
+        start = end - timedelta(hours=hours)
+
+        # Identificativo distinto per rete, giorno e slot.
+        # Evita richieste duplicate nello stesso intervallo.
+        name = (
+            f"enduro-auto-{stamp}-"
+            f"s{slot}-{network}"
+        )
 
         if name in existing_names:
-            print("Gia' richiesta:", network)
+            print("GIA PRESENTE:", network)
             skipped += 1
             continue
 
@@ -113,52 +142,64 @@ def main():
             "request_name": name,
             "dataset_names": [network],
             "reftime": {
-                "from": start.isoformat(
-                    timespec="milliseconds"
-                ).replace("+00:00", "Z"),
-                "to": end.isoformat(
-                    timespec="milliseconds"
-                ).replace("+00:00", "Z"),
+                "from": utc_string(start),
+                "to": utc_string(end),
             },
             "output_format": "json",
             "only_reliable": True,
         }
 
         try:
-            response = api("/api/data", token, payload)
-            print(
-                "Richiesta inviata:",
-                network,
-                "risposta:",
-                str(response)[:250],
+            response = api(
+                "/api/data",
+                token,
+                payload,
             )
+
+            print(
+                "OK:",
+                network,
+                "ore:",
+                hours,
+                "risposta:",
+                str(response)[:200],
+            )
+
             created += 1
             existing_names.add(name)
 
         except urllib.error.HTTPError as exc:
             print(
-                "ERRORE:",
+                "ERRORE HTTP:",
                 network,
-                "HTTP",
                 exc.code,
             )
             failures += 1
 
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+        ) as exc:
             print(
-                "ERRORE DI RETE:",
+                "ERRORE RETE:",
                 network,
                 type(exc).__name__,
             )
             failures += 1
 
-    print("Reti selezionate:", len(selected))
+    print()
+    print("===== RIEPILOGO =====")
     print("Nuove richieste:", created)
-    print("Gia' presenti:", skipped)
+    print("Duplicate saltate:", skipped)
     print("Errori:", failures)
 
     if failures:
-        sys.exit(1)
+        print(
+            "ATTENZIONE: alcune reti non "
+            "hanno accettato la richiesta"
+        )
+
+    print("Operazione terminata")
 
 
 if __name__ == "__main__":
