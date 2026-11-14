@@ -1,0 +1,1215 @@
+{
+  "generated_utc": "2026-11-14T12:30:11.296875+00:00",
+  "observation_rows": 1564098,
+  "invalid_observation_rows": 0,
+  "stations_with_observations": 199,
+  "station_freshness": {
+    "72h_to_7d": 46,
+    "older_than_7d": 153
+  },
+  "forecast_files": 2,
+  "forecast_rows": 159200,
+  "forecast_hours_reached": 4488,
+  "future_forecast_rows": 154712,
+  "matched_station_hours": 0,
+  "unmatched_matured_reasons": {
+    "station_not_observed": 888,
+    "observations_not_yet_available": 3600
+  },
+  "stations": [
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIBH",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIBN",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIBP",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIBQ",
+      "latest_observation_utc": "2026-11-10T15:55:00+00:00",
+      "age_hours": 92.6
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIBS",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIBU",
+      "latest_observation_utc": "2026-03-26T16:55:00+00:00",
+      "age_hours": 5587.6
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIBY",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LICA",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LICF",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LICJ",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LICU",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIEC",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIEF",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIEL",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIEP",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIMA",
+      "latest_observation_utc": "2026-11-10T15:50:00+00:00",
+      "age_hours": 92.7
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIMK",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIMP",
+      "latest_observation_utc": "2026-11-10T15:50:00+00:00",
+      "age_hours": 92.7
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIMS",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIMT",
+      "latest_observation_utc": "2026-09-16T12:00:00+00:00",
+      "age_hours": 1416.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIMY",
+      "latest_observation_utc": "2026-06-16T11:55:00+00:00",
+      "age_hours": 3624.6
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIMZ",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIPB",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIPC",
+      "latest_observation_utc": "2026-11-10T16:25:00+00:00",
+      "age_hours": 92.1
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIPD",
+      "latest_observation_utc": "2026-06-16T04:00:00+00:00",
+      "age_hours": 3632.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIPI",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIPL",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIQJ",
+      "latest_observation_utc": "2026-03-26T16:55:00+00:00",
+      "age_hours": 5587.6
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIQK",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIQN",
+      "latest_observation_utc": "2026-11-10T15:50:00+00:00",
+      "age_hours": 92.7
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIQO",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIRG",
+      "latest_observation_utc": "2026-11-10T15:00:00+00:00",
+      "age_hours": 93.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIRQ",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIVB",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIVE",
+      "latest_observation_utc": "2026-06-16T11:55:00+00:00",
+      "age_hours": 3624.6
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIVM",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITI0000LIVP",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016014",
+      "latest_observation_utc": "2026-07-16T03:00:00+00:00",
+      "age_hours": 2913.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016081",
+      "latest_observation_utc": "2026-10-16T09:00:00+00:00",
+      "age_hours": 699.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016089",
+      "latest_observation_utc": "2026-04-10T10:00:00+00:00",
+      "age_hours": 5234.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016111",
+      "latest_observation_utc": "2026-10-16T13:00:00+00:00",
+      "age_hours": 695.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016114",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016121",
+      "latest_observation_utc": "2026-10-16T14:00:00+00:00",
+      "age_hours": 694.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016123",
+      "latest_observation_utc": "2026-09-16T18:00:00+00:00",
+      "age_hours": 1410.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016126",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016133",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016144",
+      "latest_observation_utc": "2026-09-16T14:00:00+00:00",
+      "age_hours": 1414.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016171",
+      "latest_observation_utc": "2026-10-16T18:00:00+00:00",
+      "age_hours": 690.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016217",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016233",
+      "latest_observation_utc": "2026-10-16T23:00:00+00:00",
+      "age_hours": 685.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016262",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016281",
+      "latest_observation_utc": "2026-07-31T12:00:00+00:00",
+      "age_hours": 2544.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016288",
+      "latest_observation_utc": "2026-05-15T17:00:00+00:00",
+      "age_hours": 4387.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016314",
+      "latest_observation_utc": "2026-02-26T08:00:00+00:00",
+      "age_hours": 6268.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016344",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016416",
+      "latest_observation_utc": "2026-04-28T03:00:00+00:00",
+      "age_hours": 4809.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016435",
+      "latest_observation_utc": "2026-10-09T21:00:00+00:00",
+      "age_hours": 855.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016475",
+      "latest_observation_utc": "2026-03-26T17:20:00+00:00",
+      "age_hours": 5587.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016532",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITM00016584",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016052",
+      "latest_observation_utc": "2026-10-06T09:00:00+00:00",
+      "age_hours": 939.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016064",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016076",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016088",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016094",
+      "latest_observation_utc": "2026-09-17T09:00:00+00:00",
+      "age_hours": 1395.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016098",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016099",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016134",
+      "latest_observation_utc": "2026-11-10T16:00:00+00:00",
+      "age_hours": 92.5
+    },
+    {
+      "network": "noaa_ghcnh",
+      "station_id": "ITMU0016149",
+      "latest_observation_utc": "2026-11-10T16:20:00+00:00",
+      "age_hours": 92.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "11129099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16008099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16008399999",
+      "latest_observation_utc": "2025-08-24T20:55:00+00:00",
+      "age_hours": 10719.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16020099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16021099999",
+      "latest_observation_utc": "2025-07-30T13:00:00+00:00",
+      "age_hours": 11327.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16022099999",
+      "latest_observation_utc": "2025-08-04T07:00:00+00:00",
+      "age_hours": 11213.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16033099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16036099999",
+      "latest_observation_utc": "2025-08-23T18:00:00+00:00",
+      "age_hours": 10746.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16045099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16052099999",
+      "latest_observation_utc": "2025-08-21T09:00:00+00:00",
+      "age_hours": 10803.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16054099999",
+      "latest_observation_utc": "2025-08-24T14:20:00+00:00",
+      "age_hours": 10726.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16059099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16059599999",
+      "latest_observation_utc": "2025-08-24T14:50:00+00:00",
+      "age_hours": 10725.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16061099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16064099999",
+      "latest_observation_utc": "2025-08-24T18:00:00+00:00",
+      "age_hours": 10722.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16066099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16076099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16080099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16084099999",
+      "latest_observation_utc": "2025-08-24T18:00:00+00:00",
+      "age_hours": 10722.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16088099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16089099999",
+      "latest_observation_utc": "2025-04-15T15:00:00+00:00",
+      "age_hours": 13869.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16090099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16095099999",
+      "latest_observation_utc": "2025-08-24T13:50:00+00:00",
+      "age_hours": 10726.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16098099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16099099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16105099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16107099999",
+      "latest_observation_utc": "2025-08-24T20:00:00+00:00",
+      "age_hours": 10720.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16108099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16110099999",
+      "latest_observation_utc": "2025-08-02T07:00:00+00:00",
+      "age_hours": 11261.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16114099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16115099999",
+      "latest_observation_utc": "2025-08-24T20:55:00+00:00",
+      "age_hours": 10719.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16119099999",
+      "latest_observation_utc": "2025-08-24T20:55:00+00:00",
+      "age_hours": 10719.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16120099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16122099999",
+      "latest_observation_utc": "2025-08-24T17:50:00+00:00",
+      "age_hours": 10722.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16125099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16133099999",
+      "latest_observation_utc": "2025-03-23T21:00:00+00:00",
+      "age_hours": 14415.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16134099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16138099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16140099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16146099999",
+      "latest_observation_utc": "2025-08-04T12:00:00+00:00",
+      "age_hours": 11208.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16147099999",
+      "latest_observation_utc": "2025-08-24T20:50:00+00:00",
+      "age_hours": 10719.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16148099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16149099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16153099999",
+      "latest_observation_utc": "2025-08-07T07:00:00+00:00",
+      "age_hours": 11141.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16158099999",
+      "latest_observation_utc": "2025-08-24T21:15:00+00:00",
+      "age_hours": 10719.3
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16168099999",
+      "latest_observation_utc": "2025-08-20T22:00:00+00:00",
+      "age_hours": 10814.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16170099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16172099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16179099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16181099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16191099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16197099999",
+      "latest_observation_utc": "2025-08-16T07:55:00+00:00",
+      "age_hours": 10924.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16206099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16214099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16215099999",
+      "latest_observation_utc": "2025-08-24T20:55:00+00:00",
+      "age_hours": 10719.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16216099999",
+      "latest_observation_utc": "2025-08-24T18:00:00+00:00",
+      "age_hours": 10722.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16217099999",
+      "latest_observation_utc": "2025-08-24T20:00:00+00:00",
+      "age_hours": 10720.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16219099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16221099999",
+      "latest_observation_utc": "2025-08-24T17:50:00+00:00",
+      "age_hours": 10722.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16224099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16227099999",
+      "latest_observation_utc": "2025-04-13T10:00:00+00:00",
+      "age_hours": 13922.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16230099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16231099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16232099999",
+      "latest_observation_utc": "2025-06-07T18:00:00+00:00",
+      "age_hours": 12594.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16234099999",
+      "latest_observation_utc": "2025-08-22T18:00:00+00:00",
+      "age_hours": 10770.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16235099999",
+      "latest_observation_utc": "2025-08-24T17:50:00+00:00",
+      "age_hours": 10722.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16239099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16242099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16243099999",
+      "latest_observation_utc": "2025-08-22T18:00:00+00:00",
+      "age_hours": 10770.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16244099999",
+      "latest_observation_utc": "2025-08-22T18:00:00+00:00",
+      "age_hours": 10770.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16245099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16252099999",
+      "latest_observation_utc": "2025-08-20T06:00:00+00:00",
+      "age_hours": 10830.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16253099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16258099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16259199999",
+      "latest_observation_utc": "2025-08-24T20:50:00+00:00",
+      "age_hours": 10719.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16259299999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16259399999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16260099999",
+      "latest_observation_utc": "2025-08-24T20:50:00+00:00",
+      "age_hours": 10719.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16261099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16263099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16266099999",
+      "latest_observation_utc": "2025-08-01T16:00:00+00:00",
+      "age_hours": 11276.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16270099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16280099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16288099999",
+      "latest_observation_utc": "2025-07-20T21:00:00+00:00",
+      "age_hours": 11559.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16289034113",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16292399999",
+      "latest_observation_utc": "2025-08-24T20:50:00+00:00",
+      "age_hours": 10719.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16294099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16310099999",
+      "latest_observation_utc": "2025-08-04T07:00:00+00:00",
+      "age_hours": 11213.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16312099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16314099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16316099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16317099999",
+      "latest_observation_utc": "2025-08-24T20:55:00+00:00",
+      "age_hours": 10719.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16320099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16324099999",
+      "latest_observation_utc": "2025-08-24T17:50:00+00:00",
+      "age_hours": 10722.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16325099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16332099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16337099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16344099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16344599999",
+      "latest_observation_utc": "2025-08-24T20:55:00+00:00",
+      "age_hours": 10719.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16350099999",
+      "latest_observation_utc": "2025-08-24T17:50:00+00:00",
+      "age_hours": 10722.7
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16360099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16362099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16400099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16405099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16415099999",
+      "latest_observation_utc": "2025-08-19T23:00:00+00:00",
+      "age_hours": 10837.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16416099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16420099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16422099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16429099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16434099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16436099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16450099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16453099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16459099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16460099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16464099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16465099999",
+      "latest_observation_utc": "2025-07-01T12:00:00+00:00",
+      "age_hours": 12024.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16470099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16475099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16480099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16490099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16520099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16531099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16532099999",
+      "latest_observation_utc": "2025-08-18T11:00:00+00:00",
+      "age_hours": 10873.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16539099999",
+      "latest_observation_utc": "2025-08-24T15:55:00+00:00",
+      "age_hours": 10724.6
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16541099999",
+      "latest_observation_utc": "2025-08-22T18:00:00+00:00",
+      "age_hours": 10770.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16542099999",
+      "latest_observation_utc": "2025-08-22T10:00:00+00:00",
+      "age_hours": 10778.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16546099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16560099999",
+      "latest_observation_utc": "2025-08-24T21:20:00+00:00",
+      "age_hours": 10719.2
+    },
+    {
+      "network": "noaa_isd",
+      "station_id": "16564099999",
+      "latest_observation_utc": "2025-08-24T21:00:00+00:00",
+      "age_hours": 10719.5
+    }
+  ]
+}
