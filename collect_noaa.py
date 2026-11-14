@@ -230,11 +230,11 @@ def run_year(stations, year):
         except ValueError:
             continue
 
-        if begin <= year_end and end >= year_start:
+        if begin <= year_end and (
+            end >= year_start or year == CURRENT_YEAR
+        ):
             eligible.append(station)
 
-    # The workflow can limit the number of stations
-    # during initial testing.
     if MAX_STATIONS:
         eligible = eligible[:MAX_STATIONS]
 
