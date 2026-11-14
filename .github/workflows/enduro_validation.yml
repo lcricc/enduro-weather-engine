@@ -1,0 +1,61 @@
+
+name: ENDURO MeteoHub Scientific Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download latest observations and forecasts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          OBS_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow meteohub_collect.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+
+          FC_RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow enduro_meteohub_forecasts.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+
+          test -n "$OBS_RUN" && test -n "$FC_RUN"
+
+          mkdir -p downloaded/obs downloaded/fc data/observations/meteohub/clean data/forecasts/national
+
+          gh run download "$OBS_RUN" --repo "$GITHUB_REPOSITORY" --pattern 'meteohub-observations-*' --dir downloaded/obs
+
+          gh run download "$FC_RUN" --repo "$GITHUB_REPOSITORY" --pattern 'enduro-meteohub-forecasts-*' --dir downloaded/fc
+
+          OBS=$(find downloaded/obs -type f -name observations_clean.csv -print -quit)
+
+          test -n "$OBS"
+
+          cp "$OBS" data/observations/meteohub/clean/observations_clean.csv
+
+          find downloaded/fc -type f -name 'forecasts_meteohub_*.csv.gz' -exec cp {} data/forecasts/national/ \;
+
+          test -n "$(find data/forecasts/national -name 'forecasts_meteohub_*.csv.gz' -print -quit)"
+
+      - name: Run scientific validation
+        run: python validate_meteohub.py
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enduro-validation-${{ github.run_id }}
+          path: data/validation/meteohub/
+          if-no-files-found: warn
+          retention-days: 90
