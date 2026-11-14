@@ -1,0 +1,71 @@
+
+name: ENDURO MeteoHub Station Analysis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Find latest observation collection
+        id: collection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow meteohub_collect.yml \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful collection found"
+            exit 1
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Collection run: $RUN_ID"
+
+      - name: Download observations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.collection.outputs.run_id }}
+        run: |
+          mkdir -p data/observations/meteohub
+
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'meteohub-observations-*' \
+            --dir data/observations/meteohub
+
+          test -s \
+            data/observations/meteohub/clean/observations_clean.csv
+
+      - name: Analyze all MeteoHub stations
+        run: python prepare_meteohub_stations.py
+
+      - name: Archive station analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-station-analysis
+          path: |
+            data/observations/meteohub/stations_meteohub.csv
+            data/observations/meteohub/stations_report.json
+          retention-days: 90
