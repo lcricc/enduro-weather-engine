@@ -1,384 +1,170 @@
-
 #!/usr/bin/env python3
-"""ENDURO WEATHER ENGINE - NOAA ISD collector."""
-
+"""ENDURO WEATHER ENGINE - NOAA GHCNh Italian observations collector."""
 import csv
-import gzip
 import io
 import json
+import math
 import os
 import urllib.error
 import urllib.request
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent
-OUT = ROOT / "data" / "observations" / "noaa"
+OUT = ROOT / 'data' / 'observations' / 'noaa'
 OUT.mkdir(parents=True, exist_ok=True)
-
-CURRENT_YEAR = datetime.now(timezone.utc).year
-MAX_STATIONS = max(0, int(os.getenv("NOAA_MAX_STATIONS", "200")))
-WORKERS = max(1, min(4, int(os.getenv("NOAA_WORKERS", "4"))))
-
-INVENTORY_URL = (
-    "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv"
-)
-
-DATA_URL = (
-    "https://www.ncei.noaa.gov/pub/data/noaa/"
-    "{year}/{usaf}-{wban}-{year}.gz"
-)
-
-STATION_COLUMNS = [
-    "network", "station_id", "station_name",
-    "latitude", "longitude", "elevation_m",
-]
-
-OBS_COLUMNS = [
-    "network", "station_id", "observed_utc",
-    "temperature_2m_c", "wind_speed_10m_kmh",
-]
+YEAR = datetime.now(timezone.utc).year
+LIMIT = max(0, int(os.getenv('NOAA_MAX_STATIONS', '200')))
+WORKERS = max(1, min(4, int(os.getenv('NOAA_WORKERS', '4'))))
+BASE = 'https://www.ncei.noaa.gov/oa/global-historical-climatology-network/hourly'
+INVENTORY = BASE + '/doc/ghcnh-station-list.csv'
+DATA = BASE + '/access/by-year/{year}/psv/GHCNh_{station}_{year}.psv'
+STATION_COLUMNS = ['network', 'station_id', 'station_name', 'latitude', 'longitude', 'elevation_m']
+OBS_COLUMNS = ['network', 'station_id', 'observed_utc', 'temperature_2m_c', 'wind_speed_10m_kmh']
 
 
 def fetch(url):
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "EnduroWeatherEngine/1.2"},
-    )
-    with urllib.request.urlopen(
-        request, timeout=75
-    ) as response:
-        return response.read()
+    req = urllib.request.Request(url, headers={'User-Agent': 'EnduroWeatherEngine/2.0 (GHCNh)'})
+    with urllib.request.urlopen(req, timeout=60) as response:
+        return response.read().decode('utf-8-sig', errors='replace')
 
 
-def read_inventory():
-    raw = fetch(INVENTORY_URL)
-    reader = csv.DictReader(
-        io.StringIO(raw.decode("utf-8-sig"))
-    )
-
-    stations = []
-
-    for row in reader:
-        if (row.get("CTRY") or "").strip() != "IT":
-            continue
-
-        try:
-            lat = float(row["LAT"])
-            lon = float(row["LON"])
-        except (ValueError, KeyError, TypeError):
-            continue
-
-        if not (35 <= lat <= 48 and 6 <= lon <= 19):
-            continue
-
-        usaf = (row.get("USAF") or "").strip()
-        wban = (row.get("WBAN") or "").strip()
-
-        if (
-            len(usaf) != 6
-            or len(wban) != 5
-            or not (usaf + wban).isdigit()
-        ):
-            continue
-
-        stations.append({
-            "network": "noaa_isd",
-            "station_id": usaf + wban,
-            "station_name": (
-                row.get("STATION NAME") or ""
-            ).strip(),
-            "latitude": lat,
-            "longitude": lon,
-            "elevation_m": row.get("ELEVATION") or "",
-            "begin": row.get("BEGIN") or "",
-            "end": row.get("END") or "",
-        })
-
-    stations.sort(key=lambda s: s["station_id"])
-    return stations
-
-
-def parse_isd(data, station, year):
-    content = gzip.decompress(data)
-    observations = {}
-
-    lines = content.decode(
-        "latin-1", errors="replace"
-    ).splitlines()
-
-    for line in lines:
-        if len(line) < 93:
-            continue
-
-        try:
-            observed = datetime.strptime(
-                line[15:27], "%Y%m%d%H%M"
-            ).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-
-        if observed.year != year:
-            continue
-
-        temp = None
-        wind = None
-
-        try:
-            code = line[87:92]
-            if code not in ("+9999", "-9999"):
-                value = int(code) / 10
-                if -90 <= value <= 60:
-                    temp = value
-        except ValueError:
-            pass
-
-        try:
-            code = line[65:69]
-            if code != "9999":
-                value = int(code) / 10
-                if 0 <= value <= 100:
-                    wind = round(value * 3.6, 2)
-        except ValueError:
-            pass
-
-        if temp is None and wind is None:
-            continue
-
-        key = observed.isoformat()
-        previous = observations.get(key)
-
-        if previous is None:
-            observations[key] = {
-                "network": "noaa_isd",
-                "station_id": station["station_id"],
-                "observed_utc": key,
-                "temperature_2m_c": temp,
-                "wind_speed_10m_kmh": wind,
-            }
-        else:
-            if previous["temperature_2m_c"] is None:
-                previous["temperature_2m_c"] = temp
-            if previous["wind_speed_10m_kmh"] is None:
-                previous["wind_speed_10m_kmh"] = wind
-
-    return list(observations.values()), len(lines)
-
-
-def collect_station(station, year):
-    sid = station["station_id"]
-
-    url = DATA_URL.format(
-        year=year,
-        usaf=sid[:6],
-        wban=sid[6:],
-    )
-
+def number(raw):
     try:
-        data = fetch(url)
-        rows, line_count = parse_isd(
-            data, station, year
-        )
+        value = float(raw)
+        return value if math.isfinite(value) else None
+    except (ValueError, TypeError):
+        return None
 
-        return {
-            "station": station,
-            "rows": rows,
-            "lines": line_count,
-            "error": None,
-        }
 
+def stations():
+    rows = csv.DictReader(io.StringIO(fetch(INVENTORY)))
+    found = []
+    for row in rows:
+        sid = (row.get('GHCN_ID') or row.get('ID') or '').strip()
+        if not sid.startswith('IT'):
+            continue
+        lat = number(row.get('LATITUDE'))
+        lon = number(row.get('LONGITUDE'))
+        if lat is None or lon is None or not (35 <= lat <= 48 and 6 <= lon <= 19):
+            continue
+        elevation = number(row.get('ELEVATION'))
+        found.append({
+            'network': 'noaa_ghcnh', 'station_id': sid,
+            'station_name': (row.get('NAME') or '').strip(),
+            'latitude': lat, 'longitude': lon,
+            'elevation_m': elevation if elevation is not None and elevation > -900 else '',
+        })
+    if not found:
+        raise RuntimeError('No Italian GHCNh stations found; inspect NOAA inventory schema')
+    found.sort(key=lambda r: r['station_id'])
+    return found[:LIMIT] if LIMIT else found
+
+
+def utc_time(raw):
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.strip().replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def get_time(row):
+    for name in ('DATE', 'Date', 'date', 'DATE_TIME', 'datetime', 'Datetime', 'DATE_TIME_UTC'):
+        if row.get(name):
+            return utc_time(row[name])
+    return None
+
+
+def qc_ok(row, variable):
+    flag = (row.get(variable + '_Quality_Code') or '').strip()
+    # NOAA GHCNh flags: numeric 2/3/6/7 and alphabetic QC flags are suspect/failed.
+    return flag not in {'2', '3', '6', '7'} and not (len(flag) == 1 and flag.islower())
+
+
+def collect(station):
+    sid = station['station_id']
+    url = DATA.format(year=YEAR, station=sid)
+    try:
+        content = fetch(url)
+        reader = csv.DictReader(io.StringIO(content), delimiter='|')
+        if not reader.fieldnames or 'temperature' not in reader.fieldnames:
+            return sid, [], 'Unexpected GHCNh columns: ' + str((reader.fieldnames or [])[:15])
+        result = {}
+        for row in reader:
+            dt = get_time(row)
+            if dt is None or dt.year != YEAR:
+                continue
+            temperature = number(row.get('temperature')) if qc_ok(row, 'temperature') else None
+            wind = number(row.get('wind_speed')) if qc_ok(row, 'wind_speed') else None
+            if temperature is not None and not (-90 <= temperature <= 60):
+                temperature = None
+            if wind is not None and not (0 <= wind <= 100):
+                wind = None
+            if temperature is None and wind is None:
+                continue
+            key = dt.isoformat()
+            previous = result.setdefault(key, {
+                'network': 'noaa_ghcnh', 'station_id': sid,
+                'observed_utc': key, 'temperature_2m_c': '',
+                'wind_speed_10m_kmh': '',
+            })
+            if temperature is not None and previous['temperature_2m_c'] == '':
+                previous['temperature_2m_c'] = temperature
+            if wind is not None and previous['wind_speed_10m_kmh'] == '':
+                previous['wind_speed_10m_kmh'] = round(wind * 3.6, 2)
+        return sid, list(result.values()), None
     except urllib.error.HTTPError as exc:
-        error = f"HTTP {exc.code}"
+        return sid, [], 'HTTP ' + str(exc.code)
     except Exception as exc:
-        error = f"{type(exc).__name__}: {exc}"
-
-    return {
-        "station": station,
-        "rows": [],
-        "lines": 0,
-        "error": error,
-    }
+        return sid, [], type(exc).__name__ + ': ' + str(exc)
 
 
-def write_csv(path, columns, rows):
-    with path.open(
-        "w", newline="", encoding="utf-8"
-    ) as file:
-        writer = csv.DictWriter(
-            file, fieldnames=columns,
-            extrasaction="ignore"
-        )
+def save_csv(path, columns, rows):
+    with path.open('w', newline='', encoding='utf-8') as stream:
+        writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader()
         writer.writerows(rows)
 
 
-def run_year(stations, year):
-    print(f"\nChecking NOAA year {year}", flush=True)
-
-    year_start = year * 10000 + 101
-    year_end = year * 10000 + 1231
-
-    eligible = []
-
-    for station in stations:
-        try:
-            begin = int(station["begin"])
-            end = int(station["end"])
-        except ValueError:
-            continue
-
-        if begin <= year_end and (
-            end >= year_start or year == CURRENT_YEAR
-        ):
-            eligible.append(station)
-
-    if MAX_STATIONS:
-        eligible = eligible[:MAX_STATIONS]
-
-    print(
-        f"Eligible stations: {len(eligible)}",
-        flush=True
-    )
-
-    successful = []
+def main():
+    selected = stations()
+    print(f'GHCNh Italian stations selected: {len(selected)}', flush=True)
     observations = []
+    successful = set()
     failures = []
-    downloaded_files = 0
-
-    with ThreadPoolExecutor(
-        max_workers=WORKERS
-    ) as executor:
-        futures = [
-            executor.submit(
-                collect_station, station, year
-            )
-            for station in eligible
-        ]
-
-        for index, future in enumerate(
-            as_completed(futures), 1
-        ):
-            result = future.result()
-            station = result["station"]
-            rows = result["rows"]
-
-            if result["error"] is None:
-                downloaded_files += 1
-
+    with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+        futures = [executor.submit(collect, s) for s in selected]
+        for future in as_completed(futures):
+            sid, rows, error = future.result()
             if rows:
-                successful.append(station)
+                successful.add(sid)
                 observations.extend(rows)
             else:
-                failures.append({
-                    "station_id": station["station_id"],
-                    "station_name": station["station_name"],
-                    "file_lines": result["lines"],
-                    "error": result["error"] or "no valid rows",
-                })
-
-            if index % 25 == 0:
-                print(
-                    f"{year}: {index}/{len(eligible)} "
-                    f"checked; {len(successful)} stations; "
-                    f"{len(observations)} observations",
-                    flush=True
-                )
-
-    successful.sort(key=lambda x: x["station_id"])
-    observations.sort(
-        key=lambda x: (
-            x["station_id"], x["observed_utc"]
-        )
-    )
-
-    write_csv(
-        OUT / f"stations_{year}.csv",
-        STATION_COLUMNS, successful
-    )
-
-    write_csv(
-        OUT / f"observations_{year}.csv",
-        OBS_COLUMNS, observations
-    )
-
+                failures.append({'station_id': sid, 'error': error or 'No valid 2026 data'})
+    observations.sort(key=lambda r: (r['station_id'], r['observed_utc']))
+    save_csv(OUT / f'stations_{YEAR}.csv', STATION_COLUMNS,
+             [s for s in selected if s['station_id'] in successful])
+    save_csv(OUT / f'observations_{YEAR}.csv', OBS_COLUMNS, observations)
     report = {
-        "year": year,
-        "eligible_stations": len(eligible),
-        "downloaded_files": downloaded_files,
-        "stations_with_observations": len(successful),
-        "observations": len(observations),
-        "failures": failures,
+        'source': 'NOAA GHCNh', 'year': YEAR,
+        'eligible_stations': len(selected),
+        'downloaded_files': len(successful),
+        'stations_with_observations': len(successful),
+        'observations': len(observations), 'failures': failures,
+        'note': 'GHCNh station IDs differ from legacy ISD; validation requires matching identifiers.'
     }
-
-    (OUT / f"report_{year}.json").write_text(
-        json.dumps(
-            report, indent=2, ensure_ascii=False
-        ),
-        encoding="utf-8"
-    )
-
-    print(
-        json.dumps(
-            {k: v for k, v in report.items()
-             if k != "failures"},
-            indent=2
-        ),
-        flush=True
-    )
-
-    if failures:
-        print(
-            "FIRST 10 FAILURES:",
-            json.dumps(
-                failures[:10],
-                ensure_ascii=False,
-                indent=2
-            ),
-            flush=True
-        )
-
-    return len(successful)
+    (OUT / f'report_{YEAR}.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+    print(json.dumps({k: v for k, v in report.items() if k != 'failures'}, indent=2), flush=True)
+    print('First failures:', failures[:5], flush=True)
+    if not observations:
+        raise RuntimeError('No GHCNh observations acquired. Check station URLs and PSV schema in logs.')
 
 
-def main():
-    stations = read_inventory()
-
-    print(
-        f"Italian stations in inventory: "
-        f"{len(stations)}",
-        flush=True
-    )
-
-    if not stations:
-        raise RuntimeError(
-            "No Italian stations found in NOAA inventory"
-        )
-
-    count = run_year(stations, CURRENT_YEAR)
-
-    if count == 0:
-        print(
-            "No observations in current year. "
-            "Trying previous year...",
-            flush=True
-        )
-        count = run_year(stations, CURRENT_YEAR - 1)
-
-    if count == 0:
-        print(
-            "WARNING: No observations acquired. "
-            "Inspect the failure details above.",
-            flush=True
-        )
-    else:
-        print(
-            f"SUCCESS: {count} NOAA stations acquired.",
-            flush=True
-        )
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
