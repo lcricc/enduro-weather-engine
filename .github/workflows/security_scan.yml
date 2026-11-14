@@ -1,0 +1,82 @@
+
+name: ENDURO Security Scan
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-scan:
+    name: Scan repository and git history
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Gitleaks
+        run: |
+          set -euo pipefail
+          VERSION="8.24.3"
+          curl -fsSL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan files and complete history
+        id: scan
+        continue-on-error: true
+        run: |
+          gitleaks git . \
+            --report-format json \
+            --report-path security-report.json \
+            --redact=100 \
+            --exit-code 1
+
+      - name: Display safe summary
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("security-report.json")
+          if path.exists():
+              findings = json.loads(path.read_text())
+              print(f"Potential secrets detected: {len(findings)}")
+              for finding in findings:
+                  print(
+                      f"Rule: {finding.get('RuleID', 'unknown')} | "
+                      f"File: {finding.get('File', 'unknown')}"
+                  )
+          else:
+              print("No scan report generated.")
+
+          print("Scan outcome:", os.environ["SCAN_OUTCOME"])
+          PY
+
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enduro-security-report
+          path: security-report.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Fail if scan detected issues
+        if: steps.scan.outcome != 'success'
+        run: |
+          echo "Security scan found potential secrets or failed."
+          exit 1
