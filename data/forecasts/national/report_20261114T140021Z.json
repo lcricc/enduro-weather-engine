@@ -1,0 +1,20 @@
+{
+  "acquired_utc": "2026-11-14T14:00:21.020219+00:00",
+  "station_identifiers": 69,
+  "unique_locations": 68,
+  "models_requested": [
+    "ecmwf_ifs025",
+    "ecmwf_aifs025",
+    "icon_seamless",
+    "gfs_seamless",
+    "meteofrance_seamless",
+    "ukmo_seamless",
+    "gem_seamless",
+    "arpege_world"
+  ],
+  "successful_batches": 32,
+  "forecast_rows": 44712,
+  "failed_batches": 0,
+  "errors": [],
+  "archive": "data/forecasts/national/forecasts_20261114T140021Z.csv.gz"
+}
