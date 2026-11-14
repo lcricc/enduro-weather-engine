@@ -7,7 +7,7 @@ on:
     - cron: "15 0,6,12,18 * * *"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: enduro-national-forecasts
@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,6 +31,40 @@ jobs:
 
       - name: Collect national forecasts
         run: python collect_national_forecasts.py
+
+      - name: Save permanent GitHub archive
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "enduro-weather-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin forecast-archive; then
+            git fetch origin forecast-archive
+            git worktree add archive-worktree -B forecast-archive origin/forecast-archive
+          else
+            git worktree add --detach archive-worktree
+            cd archive-worktree
+            git checkout --orphan forecast-archive
+            git rm -rf . || true
+            cd ..
+          fi
+
+          mkdir -p archive-worktree/data/forecasts/national
+
+          find data/forecasts/national -maxdepth 1 -type f \
+            \( -name '*.csv.gz' -o -name '*.json' \) \
+            -exec cp -n {} archive-worktree/data/forecasts/national/ \;
+
+          cd archive-worktree
+          git add data/forecasts/national/
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Archive national forecasts run $GITHUB_RUN_ID"
+            git push origin HEAD:forecast-archive
+          fi
 
       - name: Archive forecasts and reports
         if: always()
