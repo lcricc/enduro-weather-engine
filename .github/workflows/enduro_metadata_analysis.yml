@@ -1,0 +1,69 @@
+
+name: ENDURO MeteoHub Metadata Analysis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download latest observations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          RUN_ID=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow meteohub_collect.yml \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          test -n "$RUN_ID"
+
+          mkdir -p downloaded/observations
+          mkdir -p data/observations/meteohub/clean
+
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'meteohub-observations-*' \
+            --dir downloaded/observations
+
+          OBS=$(find downloaded/observations \
+            -type f \
+            -name observations_clean.csv \
+            -print -quit)
+
+          test -n "$OBS"
+
+          cp "$OBS" \
+            data/observations/meteohub/clean/observations_clean.csv
+
+      - name: Analyze BUFR metadata
+        run: python analyze_meteohub_metadata.py
+
+      - name: Upload metadata report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enduro-metadata-${{ github.run_id }}
+          path: data/validation/meteohub/metadata/
+          if-no-files-found: warn
+          retention-days: 90
