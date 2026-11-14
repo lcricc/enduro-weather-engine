@@ -1,0 +1,13 @@
+{
+  "generated_utc": "2026-11-14T10:43:33.983965+00:00",
+  "observation_files": 2,
+  "observation_station_hours": 864819,
+  "forecast_rows_scanned": 112832,
+  "matched_forecast_rows": 0,
+  "metrics": [],
+  "notes": [
+    "Observation samples aggregated to UTC clock hours",
+    "Forecasts compared only with matching station IDs and valid UTC hours",
+    "Metrics are descriptive, not yet a fair common-sample model ranking"
+  ]
+}
