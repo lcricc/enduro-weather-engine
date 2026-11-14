@@ -1,209 +1,381 @@
-#!/usr/bin/env python3
-"""Conservative, reproducible validation of MeteoHub temperature/wind forecasts.
 
-Precipitation is deliberately excluded until BUFR timerange/accumulation semantics
-are verified. Do not infer meteorological units from numerical magnitude.
+#!/usr/bin/env python3
+"""ENDURO WEATHER ENGINE - MeteoHub validation V2.
+
+Conservative validation of hourly temperature and wind forecasts.
+Only manually approved BUFR metadata signatures are accepted.
 """
+
 import csv
 import gzip
 import json
 import math
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-OBS = Path('data/observations/meteohub/clean/observations_clean.csv')
-FC_DIR = Path('data/forecasts/national')
-OUT = Path('data/validation/meteohub')
-# BUFR 0-12-101 air temperature; 0-11-002 wind speed.
-CODES = {'B12101': 'temperature_2m_c', 'B11002': 'wind_speed_10m_kmh'}
-EXPECTED = {'temperature_2m_c': 'c', 'wind_speed_10m_kmh': 'km/h'}
+OBS = Path(
+    "data/observations/meteohub/clean/observations_clean.csv"
+)
+FC_DIR = Path("data/forecasts/national")
+OUT = Path("data/validation/meteohub")
+APPROVED = Path("meteohub_approved_metadata.json")
+
+VARIABLES = {
+    "B12101": "temperature_2m_c",
+    "B11002": "wind_speed_10m_kmh",
+}
 
 
-def num(x):
+def number(value):
     try:
-        v = float(x)
-        return v if math.isfinite(v) else None
+        x = float(value)
+        return x if math.isfinite(x) else None
     except (ValueError, TypeError):
         return None
 
 
-def utc(x):
+def timestamp(value):
     try:
-        d = datetime.fromisoformat(str(x).replace('Z', '+00:00'))
-        return d.astimezone(timezone.utc) if d.tzinfo else None
+        d = datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")
+        )
+        if d.tzinfo is None:
+            return None
+        return d.astimezone(timezone.utc)
     except (ValueError, TypeError):
         return None
 
 
-def hour(d):
-    return d.replace(minute=0, second=0, microsecond=0)
+def signature(code, level, timerange):
+    return json.dumps(
+        {
+            "code": code,
+            "level": level,
+            "timerange": timerange,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
-def convert(code, value, unit):
-    """Only explicit, recognized units are accepted."""
-    u = unit.strip().lower().replace('°', '').replace(' ', '')
-    if code == 'B12101':
-        if u in ('k', 'kelvin'):
-            return value - 273.15
-        if u in ('c', 'celsius', 'degc'):
-            return value
-    if code == 'B11002':
-        if u in ('m/s', 'ms-1', 'm.s-1', 'm*s-1'):
-            return value * 3.6
-        if u in ('km/h', 'kmh', 'kmh-1'):
-            return value
-    return None
+def load_approved():
+    if not APPROVED.exists():
+        return {}
 
+    raw = json.loads(APPROVED.read_text(encoding="utf-8"))
 
-def load_obs(path):
-    """Hourly exact-time observation; conflicting or duplicate measurements excluded."""
-    vals = defaultdict(list)
-    stats = Counter()
-    with path.open(encoding='utf-8-sig', newline='') as f:
-        for r in csv.DictReader(f):
-            stats['rows'] += 1
-            code = (r.get('variable') or '').strip()
-            if code not in CODES:
-                continue
-            d = utc(r.get('time_utc'))
-            v = num(r.get('value'))
-            network = (r.get('network') or '').strip()
-            station = (r.get('station_id') or '').strip()
-            if not (d and v is not None and network and station):
-                stats['invalid'] += 1
-                continue
-            # Do not silently align a 10-minute observation to an hourly forecast.
-            if d.minute or d.second or d.microsecond:
-                stats['non_hourly'] += 1
-                continue
-            # BUFR level and timerange must be decoded before a 2m/10m comparison
-            # can be scientifically justified. Preserve only groups with metadata
-            # matching an explicitly supplied allowlist (see below).
-            try:
-                level = json.loads(r.get('level') or 'null')
-                timerange = json.loads(r.get('timerange') or 'null')
-            except json.JSONDecodeError:
-                stats['invalid_metadata'] += 1
-                continue
-            if not (isinstance(level, dict) and isinstance(timerange, dict)):
-                stats['unverified_level_timerange'] += 1
-                continue
-            # No assumptions about MeteoHub's BUFR metadata schema: by default
-            # require exact approved signatures in a sidecar file.
-            sig = json.dumps({'code': code, 'level': level, 'timerange': timerange}, sort_keys=True, separators=(',', ':'))
-            if sig not in ALLOWED:
-                stats['unapproved_metadata'] += 1
-                continue
-            converted = convert(code, v, r.get('unit') or '')
-            if converted is None:
-                stats['unknown_unit'] += 1
-                continue
-            vals[(network, station, d, CODES[code])].append(converted)
+    if not isinstance(raw, list):
+        raise ValueError("Approved metadata must be a list")
+
     result = {}
-    for key, samples in vals.items():
-        if len(samples) == 1:
-            result[key] = samples[0]
+
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("Invalid metadata entry")
+
+        code = item.get("code")
+        unit = item.get("unit")
+
+        if code not in VARIABLES:
+            raise ValueError(f"Unsupported BUFR code: {code}")
+
+        if unit not in ("K", "degC", "m/s", "km/h"):
+            raise ValueError(
+                f"Explicit unit required for {code}"
+            )
+
+        if code == "B12101" and unit not in ("K", "degC"):
+            raise ValueError("Invalid temperature unit")
+
+        if code == "B11002" and unit not in ("m/s", "km/h"):
+            raise ValueError("Invalid wind unit")
+
+        if not isinstance(item.get("level"), list):
+            raise ValueError("BUFR level must be an array")
+
+        if not isinstance(item.get("timerange"), list):
+            raise ValueError("BUFR timerange must be an array")
+
+        key = signature(
+            code, item["level"], item["timerange"]
+        )
+
+        if key in result:
+            raise ValueError("Duplicate approved signature")
+
+        result[key] = unit
+
+    return result
+
+
+def convert(value, unit):
+    if unit == "K":
+        return value - 273.15
+    if unit == "m/s":
+        return value * 3.6
+    return value
+
+
+def load_observations(approved):
+    observations = defaultdict(list)
+    stats = Counter()
+
+    with OBS.open(
+        encoding="utf-8-sig", newline=""
+    ) as file:
+        for row in csv.DictReader(file):
+            stats["rows"] += 1
+
+            code = (row.get("variable") or "").strip()
+
+            if code not in VARIABLES:
+                continue
+
+            try:
+                level = json.loads(row.get("level") or "null")
+                timerange = json.loads(
+                    row.get("timerange") or "null"
+                )
+            except (ValueError, TypeError):
+                stats["invalid_metadata"] += 1
+                continue
+
+            key = signature(code, level, timerange)
+
+            if key not in approved:
+                stats["unapproved_metadata"] += 1
+                continue
+
+            unit = approved[key]
+            observed_unit = (row.get("unit") or "").strip()
+
+            if observed_unit and observed_unit != unit:
+                stats["unit_conflicts"] += 1
+                continue
+
+            dt = timestamp(row.get("time_utc"))
+            value = number(row.get("value"))
+
+            if dt is None or value is None:
+                stats["invalid_values"] += 1
+                continue
+
+            if dt.minute or dt.second or dt.microsecond:
+                stats["non_hourly"] += 1
+                continue
+
+            network = (row.get("network") or "").strip()
+            station = (row.get("station_id") or "").strip()
+
+            if not network or not station:
+                stats["missing_station"] += 1
+                continue
+
+            obs_key = (
+                network,
+                station,
+                dt,
+                VARIABLES[code],
+            )
+
+            observations[obs_key].append(
+                convert(value, unit)
+            )
+
+    clean = {}
+
+    for key, values in observations.items():
+        if len(values) == 1:
+            clean[key] = values[0]
         else:
-            stats['ambiguous_station_hours'] += 1
-    stats['usable_station_hours'] = len(result)
-    return result, stats
+            stats["ambiguous_observations"] += 1
+
+    stats["usable_station_hours"] = len(clean)
+    return clean, stats
 
 
-def bucket(h):
-    if 0 < h <= 24: return '0-24h'
-    if h <= 48 and h > 24: return '24-48h'
-    if h <= 72 and h > 48: return '48-72h'
-    if h <= 96 and h > 72: return '72-96h'
+def lead_bucket(hours):
+    if 0 < hours <= 24:
+        return "0-24h"
+    if 24 < hours <= 48:
+        return "24-48h"
+    if 48 < hours <= 72:
+        return "48-72h"
+    if 72 < hours <= 96:
+        return "72-96h"
     return None
 
 
-def load_allowlist(path):
-    if not path.exists():
-        return set()
-    raw = json.loads(path.read_text(encoding='utf-8'))
-    return {json.dumps(x, sort_keys=True, separators=(',', ':')) for x in raw}
-
-
-def run():
-    global ALLOWED
+def validate():
     OUT.mkdir(parents=True, exist_ok=True)
-    ALLOWED = load_allowlist(Path('meteohub_approved_metadata.json'))
-    if not OBS.exists():
-        raise RuntimeError('Missing MeteoHub observations_clean.csv')
-    files = sorted(FC_DIR.glob('forecasts_meteohub_*.csv.gz'))
-    if not files:
-        raise RuntimeError('Missing MeteoHub forecast archive')
-    observations, obs_stats = load_obs(OBS)
+
+    approved = load_approved()
+
+    if not OBS.is_file():
+        raise FileNotFoundError("MeteoHub observations missing")
+
+    forecast_files = sorted(
+        FC_DIR.glob("forecasts_meteohub_*.csv.gz")
+    )
+
+    if not forecast_files:
+        raise FileNotFoundError("MeteoHub forecasts missing")
+
+    observations, obs_stats = load_observations(approved)
+
     diagnostics = Counter()
-    # Each forecast issuance must be treated separately, not averaged into another.
-    # Duplicates in same issuance are excluded, not silently counted twice.
     candidates = defaultdict(list)
-    for path in files:
-        with gzip.open(path, 'rt', encoding='utf-8', newline='') as f:
-            for r in csv.DictReader(f):
-                diagnostics['forecast_rows'] += 1
-                issue, valid = utc(r.get('acquired_utc')), utc(r.get('valid_time_utc'))
-                if not (issue and valid and valid > issue):
-                    diagnostics['invalid_forecast_time'] += 1
+    all_models = set()
+
+    for path in forecast_files:
+        with gzip.open(
+            path, "rt", encoding="utf-8", newline=""
+        ) as file:
+            for row in csv.DictReader(file):
+                diagnostics["forecast_rows"] += 1
+
+                model = (row.get("model") or "").strip()
+                if model:
+                    all_models.add(model)
+
+                issue = timestamp(row.get("acquired_utc"))
+                valid = timestamp(row.get("valid_time_utc"))
+
+                if not issue or not valid or valid <= issue:
+                    diagnostics["invalid_forecast_time"] += 1
                     continue
-                if valid.minute or valid.second or valid.microsecond:
-                    diagnostics['non_hourly_forecast'] += 1
+
+                if valid.minute or valid.second:
+                    diagnostics["non_hourly_forecast"] += 1
                     continue
-                b = bucket((valid - issue).total_seconds() / 3600)
-                if not b:
+
+                hours = (valid - issue).total_seconds() / 3600
+                bucket = lead_bucket(hours)
+
+                if bucket is None:
                     continue
-                for variable in CODES.values():
-                    pred = num(r.get(variable))
-                    if pred is None: continue
-                    key = ((r.get('network') or '').strip(), (r.get('station_id') or '').strip(), valid, variable)
-                    if key not in observations:
-                        diagnostics['unmatched_variable_rows'] += 1
+
+                network = (row.get("network") or "").strip()
+                station = (row.get("station_id") or "").strip()
+
+                for variable in VARIABLES.values():
+                    predicted = number(row.get(variable))
+
+                    if predicted is None:
                         continue
-                    model = (r.get('model') or '').strip()
-                    if not model: continue
-                    candidates[(issue, key, model, b)].append((pred, observations[key]))
-    # Compare models only on identical issue, station, time, variable and lead bucket.
-    by_event = defaultdict(dict)
-    for (issue, key, model, b), entries in candidates.items():
-        if len(entries) != 1:
-            diagnostics['duplicate_forecasts'] += 1
+
+                    obs_key = (
+                        network, station, valid, variable
+                    )
+
+                    if obs_key not in observations:
+                        diagnostics["unmatched"] += 1
+                        continue
+
+                    event_key = (
+                        issue, obs_key, bucket, model
+                    )
+
+                    candidates[event_key].append(
+                        (predicted, observations[obs_key])
+                    )
+
+    events = defaultdict(dict)
+
+    for (issue, obs_key, bucket, model), values in (
+        candidates.items()
+    ):
+        if len(values) != 1:
+            diagnostics["duplicate_forecasts"] += 1
             continue
-        by_event[(issue, key, b)][model] = entries[0]
-    models = sorted({m for group in by_event.values() for m in group})
-    accum = defaultdict(list)
-    for (issue, key, b), group in by_event.items():
-        if set(group) != set(models):
-            diagnostics['incomplete_model_comparison'] += 1
+
+        events[(issue, obs_key, bucket)][model] = values[0]
+
+    errors = defaultdict(list)
+
+    for (_, obs_key, bucket), models in events.items():
+        if set(models) != all_models:
+            diagnostics["incomplete_model_comparison"] += 1
             continue
-        variable = key[3]
-        for model, (pred, obs) in group.items():
-            accum[(model, variable, b)].append(pred - obs)
+
+        variable = obs_key[3]
+
+        for model, (predicted, observed) in models.items():
+            errors[(model, variable, bucket)].append(
+                predicted - observed
+            )
+
     metrics = []
-    for (model, variable, b), errors in sorted(accum.items()):
-        n = len(errors)
-        metrics.append({'model': model, 'variable': variable, 'lead_bucket': b,
-                        'n': n, 'mae': round(sum(map(abs, errors))/n, 4),
-                        'rmse': round(math.sqrt(sum(e*e for e in errors)/n), 4),
-                        'bias': round(sum(errors)/n, 4)})
-    report = {'generated_utc': datetime.now(timezone.utc).isoformat(),
-              'forecast_files': len(files), 'models_seen': models,
-              'approved_metadata_signatures': len(ALLOWED),
-              'observation_diagnostics': dict(obs_stats),
-              'forecast_diagnostics': dict(diagnostics), 'metrics': metrics,
-              'status': 'VALIDATED' if metrics else 'AWAITING_VERIFIABLE_PAIRS',
-              'notes': ['Only explicitly approved BUFR level/timerange signatures are used',
-                        'Only exact UTC hourly observations are matched',
-                        'Ranking uses common model samples per issuance',
-                        'Precipitation intentionally excluded pending accumulation semantics',
-                        'Zero metrics is not a successful scientific validation']}
-    (OUT/'validation_latest.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
-    with (OUT/'metrics.csv').open('w', newline='', encoding='utf-8') as f:
-        w = csv.DictWriter(f, fieldnames=['model','variable','lead_bucket','n','mae','rmse','bias'])
-        w.writeheader(); w.writerows(metrics)
+
+    for (model, variable, bucket), values in sorted(
+        errors.items()
+    ):
+        n = len(values)
+
+        metrics.append({
+            "model": model,
+            "variable": variable,
+            "lead_bucket": bucket,
+            "n": n,
+            "mae": round(
+                sum(abs(x) for x in values) / n, 4
+            ),
+            "rmse": round(
+                math.sqrt(
+                    sum(x * x for x in values) / n
+                ), 4
+            ),
+            "bias": round(sum(values) / n, 4),
+        })
+
+    report = {
+        "engine": "ENDURO WEATHER ENGINE",
+        "version": "MeteoHub Validation V2",
+        "generated_utc": datetime.now(
+            timezone.utc
+        ).isoformat(),
+        "forecast_files": len(forecast_files),
+        "forecast_models": sorted(all_models),
+        "approved_signatures": len(approved),
+        "observation_diagnostics": dict(obs_stats),
+        "forecast_diagnostics": dict(diagnostics),
+        "metrics": metrics,
+        "status": (
+            "VALIDATED"
+            if metrics
+            else "AWAITING_VERIFIABLE_PAIRS"
+        ),
+        "limitations": [
+            "Only manually approved metadata accepted",
+            "Exact hourly UTC matching required",
+            "Forecast acquisition is a proxy for issuance",
+            "Only common-model samples compared",
+            "Precipitation excluded pending BUFR review",
+            "Zero metrics does not establish accuracy",
+        ],
+    }
+
+    (OUT / "validation_latest.json").write_text(
+        json.dumps(report, indent=2),
+        encoding="utf-8",
+    )
+
+    with (OUT / "metrics.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as file:
+        writer = csv.DictWriter(
+            file,
+            fieldnames=[
+                "model", "variable", "lead_bucket",
+                "n", "mae", "rmse", "bias",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(metrics)
+
     print(json.dumps(report, indent=2))
 
 
-ALLOWED = set()
-if __name__ == '__main__':
-    run()
+if __name__ == "__main__":
+    validate()
