@@ -1,8 +1,1209 @@
 {
   "year": 2026,
-  "eligible_stations": 0,
+  "eligible_stations": 200,
   "downloaded_files": 0,
   "stations_with_observations": 0,
   "observations": 0,
-  "failures": []
+  "failures": [
+    {
+      "station_id": "16001099999",
+      "station_name": "BASSANO DEL GRAPPA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16001699999",
+      "station_name": "ANCONA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "11129099999",
+      "station_name": "PASSO DEL BRENNERO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16008099999",
+      "station_name": "S. VALENTINO ALLA MUTA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16008399999",
+      "station_name": "RESIA PASS",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16014099999",
+      "station_name": "VIPITENO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16015099999",
+      "station_name": "BRENNERO PASS",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16010099999",
+      "station_name": "VIPITENO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16018099999",
+      "station_name": "SOPRABOLZANO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16020099999",
+      "station_name": "BOLZANO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16021099999",
+      "station_name": "ROLLE PASS",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16022099999",
+      "station_name": "PAGANELLA MOUNTAIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16033099999",
+      "station_name": "DOBBIACO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16023099999",
+      "station_name": "TRENTO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16036099999",
+      "station_name": "AVIANO AB",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16036599999",
+      "station_name": "AVIANO (USAF)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16037099999",
+      "station_name": "AVIANO (USAF)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16040099999",
+      "station_name": "TARVISIO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16041099999",
+      "station_name": "TARVISIO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16044099999",
+      "station_name": "UDINE/CAMPOFORMIDO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16045099999",
+      "station_name": "RIVOLTO / UDINE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16045599999",
+      "station_name": "GORIZIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16052099999",
+      "station_name": "PIAN ROSA (MTN TOP)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16046099999",
+      "station_name": "UDINE/RIVOLTO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16053099999",
+      "station_name": "COLLE DEL GIGANTE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16054099999",
+      "station_name": "AOSTA POLLEIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16058099999",
+      "station_name": "BOUSSON",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16059099999",
+      "station_name": "TORINO CASELLE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16059599999",
+      "station_name": "AERITALIA-TORINO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16060099999",
+      "station_name": "TORINO VENARIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16064099999",
+      "station_name": "CAMERI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16061099999",
+      "station_name": "TORINO/BRIC CROCE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16067099999",
+      "station_name": "GALLARATE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16066099999",
+      "station_name": "MALPENSA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16070099999",
+      "station_name": "GRIGNA SETTENTRION",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16068099999",
+      "station_name": "CASALE MONFERRATO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16072099999",
+      "station_name": "BISBINO MOUNTAIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16073099999",
+      "station_name": "MONTE BISBINO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16076099999",
+      "station_name": "BERGAMO ORIO AL SERIO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16074099999",
+      "station_name": "VALCAVA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16088099999",
+      "station_name": "GHEDI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16084099999",
+      "station_name": "PIACENZA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16081099999",
+      "station_name": "MILANO/LINATE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16080099999",
+      "station_name": "MILANO LINATE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16090099999",
+      "station_name": "VERONA VILLAFRANCA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16092099999",
+      "station_name": "GRAPPA MOUNTAIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16090399999",
+      "station_name": "PADOVA (CIV/IT-AFB)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16089099999",
+      "station_name": "DESENZANO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16094099999",
+      "station_name": "VICENZA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16095099999",
+      "station_name": "PADOVA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16096099999",
+      "station_name": "MOUNT VENDA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16098099999",
+      "station_name": "TREVISO ISTRANA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16100099999",
+      "station_name": "VENEZIA/SAN NICOLO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16099099999",
+      "station_name": "TREVISO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16101099999",
+      "station_name": "VENEZIA LIDO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16100399999",
+      "station_name": "VENEZIA / SAN NICOLO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16108099999",
+      "station_name": "RONCHI DEI LEGIONARI / TRIESTE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16107099999",
+      "station_name": "CONCORDIA SAGITTARIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16105099999",
+      "station_name": "VENEZIA TESSERA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16110099999",
+      "station_name": "TRIESTE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16112099999",
+      "station_name": "FRAITEVE MOUNTAIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16111099999",
+      "station_name": "MONTE SETTEPANI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16114099999",
+      "station_name": "MONDOVI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16113099999",
+      "station_name": "CUNEO-LEVALDIGI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16115099999",
+      "station_name": "MALANOTTE MOUNTAIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16115599999",
+      "station_name": "MALANOTTE MOUNTAIN&",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16116099999",
+      "station_name": "GOVONE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16117099999",
+      "station_name": "CUNEO LEVALDIGI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16118099999",
+      "station_name": "NOVI LIGURE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16119099999",
+      "station_name": "GIOVI PASS",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16120099999",
+      "station_name": "GENOVA SESTRI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16121099999",
+      "station_name": "GENOVA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16123099999",
+      "station_name": "CHIAVARI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16124099999",
+      "station_name": "CISA PASS",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16122099999",
+      "station_name": "ALBENGA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16125099999",
+      "station_name": "SARZANA/LUNI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16127099999",
+      "station_name": "SARZANA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16126099999",
+      "station_name": "PASSO DEI GIOVI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16129099999",
+      "station_name": "PALMARIA ISLAND",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16128099999",
+      "station_name": "MODENA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16130099999",
+      "station_name": "PARMA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16132099999",
+      "station_name": "BOLOGNA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16134099999",
+      "station_name": "CIMONE MOUNTAIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16133099999",
+      "station_name": "FERRARA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16136099999",
+      "station_name": "PASSO PORRETTA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16134399999",
+      "station_name": "PORRETTA PASS",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16135099999",
+      "station_name": "PASSO PORRETTA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16138099999",
+      "station_name": "FERRARA (AUT)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16142099999",
+      "station_name": "RIFREDO MUGELLO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16140099999",
+      "station_name": "BOLOGNA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16145099999",
+      "station_name": "PUNTA MARINA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16144099999",
+      "station_name": "S. PIETRO CAPOFIUME MOLINELLA (BOLOGNA)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16148099999",
+      "station_name": "CERVIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16146099999",
+      "station_name": "POINT MARINA/RAVENN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16149099999",
+      "station_name": "RIMINI MIRAMARE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16147099999",
+      "station_name": "FORLI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16154099999",
+      "station_name": "ISOLA GORGONA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16150099999",
+      "station_name": "IMPERIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16153099999",
+      "station_name": "CAPE MELE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16155099999",
+      "station_name": "ISOLA CAPRAIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16158099999",
+      "station_name": "PISA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16164099999",
+      "station_name": "VOLTERRA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16168099999",
+      "station_name": "MOUNT ARGENTARIO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16165099999",
+      "station_name": "VOLTERRA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16170099999",
+      "station_name": "FIRENZE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16171099999",
+      "station_name": "FIRENZE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16172099999",
+      "station_name": "AREZZO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16174099999",
+      "station_name": "SIENA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16174399999",
+      "station_name": "SIENA             &",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16179099999",
+      "station_name": "FRONTONE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16176099999",
+      "station_name": "SASSOFELTRIO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16178099999",
+      "station_name": "FRONTONE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16180099999",
+      "station_name": "PERUGIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16182099999",
+      "station_name": "PERUGIA S. EGIDIO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16190099999",
+      "station_name": "ANCONA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16181099999",
+      "station_name": "PERUGIA S FRANCESCO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16192099999",
+      "station_name": "LORETO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16191099999",
+      "station_name": "ANCONA FALCONARA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16191599999",
+      "station_name": "JESI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16197099999",
+      "station_name": "MONTE CALAMITA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16204099999",
+      "station_name": "RADICOFANI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16198099999",
+      "station_name": "ISOLA D'ELBA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16200099999",
+      "station_name": "PIANOSA ISLAND",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16206099999",
+      "station_name": "GROSSETO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16214099999",
+      "station_name": "CIVITAVECCHIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16210099999",
+      "station_name": "FURBARA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16215099999",
+      "station_name": "CIVITAVECCHIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16216099999",
+      "station_name": "VITERBO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16217099999",
+      "station_name": "ORTE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16221099999",
+      "station_name": "RIETI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16219099999",
+      "station_name": "TERMINILLO MOUNTAIN",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16218099999",
+      "station_name": "VITERBO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16223099999",
+      "station_name": "VIGNA DI VALLE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16226099999",
+      "station_name": "L'AQUILA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16224099999",
+      "station_name": "VIGNA DI VALLE(MIL)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16225099999",
+      "station_name": "GROTTAMMARE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16228099999",
+      "station_name": "PRETURO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16227099999",
+      "station_name": "FUCINO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16228199999",
+      "station_name": "GRAN SASSO MTN RNG",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16228399999",
+      "station_name": "GRAN SASSO MTN RNG",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16229099999",
+      "station_name": "GRAN SASSO MTN RNG",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16230099999",
+      "station_name": "PESCARA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16231099999",
+      "station_name": "MONTE S. ANGELO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16232099999",
+      "station_name": "TERMOLI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16233099999",
+      "station_name": "GUIDONIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16238099999",
+      "station_name": "ROMA/CENTOCELLE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16235099999",
+      "station_name": "URBE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16234099999",
+      "station_name": "GUIDONIA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16239099999",
+      "station_name": "CIAMPINO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16240099999",
+      "station_name": "ROME",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16242099999",
+      "station_name": "FIUMICINO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16243099999",
+      "station_name": "LATINA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16244099999",
+      "station_name": "FROSINONE (IT-AFB)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16245099999",
+      "station_name": "PRATICA DI MARE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16247099999",
+      "station_name": "LATINA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16246099999",
+      "station_name": "FROSINONE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16249099999",
+      "station_name": "CAPE CIRCEO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16252099999",
+      "station_name": "CAMPOBASSO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16258099999",
+      "station_name": "MONTE S. ANGELO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16253099999",
+      "station_name": "GRAZZANISE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16259299999",
+      "station_name": "LEVALDIGI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16259199999",
+      "station_name": "PARMA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16260099999",
+      "station_name": "GINA LISA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16259399999",
+      "station_name": "BRESCIA MONTICHIARI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16261099999",
+      "station_name": "AMENDOLA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16260399999",
+      "station_name": "FOGGIA/GINO LISA  &",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16262099999",
+      "station_name": "TREVICO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16263099999",
+      "station_name": "TREVICO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16264099999",
+      "station_name": "MARINA DI GINOSA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16266099999",
+      "station_name": "VIESTE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16270099999",
+      "station_name": "BARI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16271099999",
+      "station_name": "BARI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16280099999",
+      "station_name": "PONZA ISLAND",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16281099999",
+      "station_name": "PONZA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16288099999",
+      "station_name": "CASERTA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16289034113",
+      "station_name": "NAPLES NAVAL AIR STATION",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16289099999",
+      "station_name": "NAPOLI/CAPODICHINO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16292099999",
+      "station_name": "PONTECAGNANO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16292399999",
+      "station_name": "PONTECAGNANO / SALERNO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16294099999",
+      "station_name": "CAPRI ISLAND",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16295099999",
+      "station_name": "CAPRI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16300099999",
+      "station_name": "POTENZA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16310099999",
+      "station_name": "CAPE PALINURO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16312099999",
+      "station_name": "GIOIA DEL COLLE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16314099999",
+      "station_name": "MATERA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16316099999",
+      "station_name": "LATRONICO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16317099999",
+      "station_name": "LATRONICO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16318099999",
+      "station_name": "MARTINA FRANCA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16324099999",
+      "station_name": "TARANTO GROTTAGLIE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16320099999",
+      "station_name": "CASALE / BRINDISI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16325099999",
+      "station_name": "MARINA DI GINOSA",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16330099999",
+      "station_name": "TARANTO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16333099999",
+      "station_name": "LECCE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16332099999",
+      "station_name": "LECCE",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16334099999",
+      "station_name": "OTRANTO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16336099999",
+      "station_name": "BONIFATI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16337099999",
+      "station_name": "BONIFATI (CAPE)",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16338099999",
+      "station_name": "CALOPEZZATI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16338399999",
+      "station_name": "CALOPEZZATI",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "16344099999",
+      "station_name": "MONTE SCURO",
+      "file_lines": 0,
+      "error": "HTTP 404"
+    }
+  ]
 }
