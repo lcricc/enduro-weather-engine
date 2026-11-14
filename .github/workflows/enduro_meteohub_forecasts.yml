@@ -1,0 +1,83 @@
+
+name: ENDURO MeteoHub Forecasts V2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  meteohub-forecasts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Find latest station inventory
+        id: inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow meteohub_stations.yml \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful station inventory"
+            exit 1
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download MeteoHub stations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.inventory.outputs.run_id }}
+        run: |
+          mkdir -p data/observations/meteohub
+
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'meteohub-station-analysis*' \
+            --dir downloaded
+
+          FOUND=$(find downloaded \
+            -type f \
+            -name stations_meteohub.csv \
+            -print -quit)
+
+          if [ -z "$FOUND" ]; then
+            echo "Station inventory missing"
+            exit 1
+          fi
+
+          cp "$FOUND" \
+            data/observations/meteohub/stations_meteohub.csv
+
+          echo "Stations available:"
+          wc -l data/observations/meteohub/stations_meteohub.csv
+
+      - name: Collect forecasts from eight models
+        run: python collect_meteohub_forecasts.py
+
+      - name: Save forecast archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enduro-meteohub-forecasts-${{ github.run_id }}
+          path: data/forecasts/national/
+          if-no-files-found: warn
+          retention-days: 90
