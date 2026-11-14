@@ -1,0 +1,38 @@
+
+name: ENDURO NOAA observations
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '42 6 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Collect NOAA Italy observations
+        env:
+          NOAA_MAX_STATIONS: '200'
+          NOAA_WORKERS: '4'
+        run: python collect_noaa.py
+
+      - name: Commit observation archives
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/observations/noaa/
+          if ! git diff --cached --quiet; then
+            git commit -m 'Archive NOAA observations'
+            git push
+          fi
