@@ -3,6 +3,12 @@ name: ENDURO Permanent Archive
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - ENDURO MeteoHub Automatic Collection
+      - ENDURO MeteoHub Forecasts V2
+    types:
+      - completed
 
 permissions:
   contents: write
@@ -14,110 +20,118 @@ concurrency:
 
 jobs:
   archive:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download latest data
+      - name: Archive completed collections
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_WORKFLOW: ${{ github.event.workflow_run.name }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
         run: |
           set -euo pipefail
-
           REPO="$GITHUB_REPOSITORY"
 
-          OBS_RUN=$(gh run list \
-            --repo "$REPO" \
-            --workflow meteohub_collect.yml \
-            --status success \
-            --limit 1 \
-            --json databaseId \
-            --jq '.[0].databaseId')
+          latest_run() {
+            gh run list \
+              --repo "$REPO" \
+              --workflow "$1" \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId'
+          }
 
-          FC_RUN=$(gh run list \
-            --repo "$REPO" \
-            --workflow enduro_meteohub_forecasts.yml \
-            --status success \
-            --limit 1 \
-            --json databaseId \
-            --jq '.[0].databaseId')
+          archive_one() {
+            local kind="$1"
+            local run_id="$2"
+            local pattern="$3"
+            local expected="$4"
 
-          test -n "$OBS_RUN"
-          test -n "$FC_RUN"
+            test -n "$run_id" || {
+              echo "Missing run ID for $kind"
+              exit 1
+            }
 
-          mkdir -p staging/observations
-          mkdir -p staging/forecasts
-          mkdir -p archive
+            local tag="meteohub-${kind}-${run_id}"
 
-          gh run download "$OBS_RUN" \
-            --repo "$REPO" \
-            --pattern 'meteohub-observations-*' \
-            --dir staging/observations
+            if gh release view "$tag" \
+              --repo "$REPO" >/dev/null 2>&1; then
+              echo "Already archived: $tag"
+              return 0
+            fi
 
-          gh run download "$FC_RUN" \
-            --repo "$REPO" \
-            --pattern 'enduro-meteohub-forecasts-*' \
-            --dir staging/forecasts
+            local work="$RUNNER_TEMP/archive-${kind}-${run_id}"
+            mkdir -p "$work/data" "$work/out"
 
-          test -n "$(find staging/observations \
-            -name observations_clean.csv -print -quit)"
+            gh run download "$run_id" \
+              --repo "$REPO" \
+              --pattern "$pattern" \
+              --dir "$work/data"
 
-          test -n "$(find staging/forecasts \
-            -name 'forecasts_meteohub_*.csv.gz' \
-            -print -quit)"
+            local found
+            found=$(find "$work/data" \
+              -type f -name "$expected" -print -quit)
 
-          echo "$OBS_RUN" > archive/observation_run.txt
-          echo "$FC_RUN" > archive/forecast_run.txt
+            test -n "$found" || {
+              echo "Required file missing: $expected"
+              exit 1
+            }
 
-      - name: Prepare archive
-        run: |
-          set -euo pipefail
+            test -s "$found" || {
+              echo "Required file empty: $found"
+              exit 1
+            }
 
-          tar -czf archive/observations.tar.gz \
-            -C staging observations
+            tar -czf "$work/out/${kind}-${run_id}.tar.gz" \
+              -C "$work" data
 
-          tar -czf archive/forecasts.tar.gz \
-            -C staging forecasts
+            test -s "$work/out/${kind}-${run_id}.tar.gz"
 
-          cd archive
+            (
+              cd "$work/out"
+              sha256sum "${kind}-${run_id}.tar.gz" \
+                > "${kind}-${run_id}.sha256"
+              sha256sum -c "${kind}-${run_id}.sha256"
+            )
 
-          sha256sum \
-            observations.tar.gz \
-            forecasts.tar.gz \
-            > SHA256SUMS.txt
+            gh release create "$tag" \
+              "$work/out/${kind}-${run_id}.tar.gz" \
+              "$work/out/${kind}-${run_id}.sha256" \
+              --repo "$REPO" \
+              --target "$GITHUB_SHA" \
+              --title "ENDURO MeteoHub $kind run $run_id" \
+              --notes "MeteoHub $kind archive from successful Actions run $run_id. SHA-256 checksum included." \
+              --latest=false
 
-          ls -lh
+            echo "Archived: $tag"
+          }
 
-          sha256sum -c SHA256SUMS.txt
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            OBS_RUN=$(latest_run meteohub_collect.yml)
+            FC_RUN=$(latest_run enduro_meteohub_forecasts.yml)
 
-      - name: Publish permanent GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
+            archive_one observations "$OBS_RUN" \
+              'meteohub-observations-*' observations_clean.csv
 
-          TAG="archive-${GITHUB_RUN_ID}"
-          REPO="$GITHUB_REPOSITORY"
+            archive_one forecasts "$FC_RUN" \
+              'enduro-meteohub-forecasts-*' \
+              'forecasts_meteohub_*.csv.gz'
 
-          if gh release view "$TAG" \
-            --repo "$REPO" >/dev/null 2>&1; then
-            echo "Release already exists: $TAG"
+          elif [ "$SOURCE_WORKFLOW" = "ENDURO MeteoHub Automatic Collection" ]; then
+            archive_one observations "$SOURCE_RUN_ID" \
+              'meteohub-observations-*' observations_clean.csv
+
+          elif [ "$SOURCE_WORKFLOW" = "ENDURO MeteoHub Forecasts V2" ]; then
+            archive_one forecasts "$SOURCE_RUN_ID" \
+              'enduro-meteohub-forecasts-*' \
+              'forecasts_meteohub_*.csv.gz'
+
+          else
+            echo "Unrecognized source workflow: $SOURCE_WORKFLOW"
             exit 1
           fi
-
-          gh release create "$TAG" \
-            archive/observations.tar.gz \
-            archive/forecasts.tar.gz \
-            archive/SHA256SUMS.txt \
-            archive/observation_run.txt \
-            archive/forecast_run.txt \
-            --repo "$REPO" \
-            --target "$GITHUB_SHA" \
-            --title "ENDURO Archive $GITHUB_RUN_ID" \
-            --notes "Historical MeteoHub archive. Source workflow run IDs are included. SHA256 checksums are provided." \
-            --latest=false
-
-          echo "Archive published: $TAG"
