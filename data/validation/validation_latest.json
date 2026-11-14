@@ -1,23 +1,23 @@
 {
-  "generated_utc": "2026-11-14T11:17:59.726518+00:00",
+  "generated_utc": "2026-11-14T11:41:02.006300+00:00",
   "observation_files": 2,
   "observation_station_hours": 864819,
-  "forecast_rows_scanned": 112832,
+  "forecast_rows_scanned": 159200,
   "matched_forecast_rows": 0,
   "metrics": [],
   "diagnostics": {
-    "forecast_files": 1,
+    "forecast_files": 2,
     "observation_quality": {
       "rows_scanned": 1564098,
       "valid_rows": 1564098
     },
-    "unmatched_forecast_rows": 112832,
+    "unmatched_forecast_rows": 159200,
     "excluded_before_matching": 0,
-    "missing_station_hour_pairs": 112832,
+    "missing_station_hour_pairs": 159200,
     "match_rate_percent": 0.0,
     "primary_cause": "forecast_after_station_observations",
     "reason_counts": {
-      "forecast_after_station_observations": 87376,
+      "forecast_after_station_observations": 133744,
       "station_not_in_observations": 25456
     },
     "examples": {
