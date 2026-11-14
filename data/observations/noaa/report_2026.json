@@ -7,11 +7,11 @@
   "observations": 521093,
   "failures": [
     {
-      "station_id": "ITA00161121",
+      "station_id": "ITA00160151",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00160151",
+      "station_id": "ITA00161121",
       "error": "HTTP 404"
     },
     {
@@ -23,7 +23,7 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00162001",
+      "station_id": "ITA00161915",
       "error": "HTTP 404"
     },
     {
@@ -31,15 +31,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00161915",
+      "station_id": "ITA00162001",
       "error": "HTTP 404"
     },
     {
       "station_id": "ITA00161941",
-      "error": "HTTP 404"
-    },
-    {
-      "station_id": "ITA00163300",
       "error": "HTTP 404"
     },
     {
@@ -51,19 +47,11 @@
       "error": "HTTP 404"
     },
     {
+      "station_id": "ITA00163300",
+      "error": "HTTP 404"
+    },
+    {
       "station_id": "ITA00164300",
-      "error": "HTTP 404"
-    },
-    {
-      "station_id": "ITA00165021",
-      "error": "HTTP 404"
-    },
-    {
-      "station_id": "ITA00164441",
-      "error": "HTTP 404"
-    },
-    {
-      "station_id": "ITA00165480",
       "error": "HTTP 404"
     },
     {
@@ -71,7 +59,23 @@
       "error": "HTTP 404"
     },
     {
+      "station_id": "ITA00165480",
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "ITA00164441",
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "ITA00165021",
+      "error": "HTTP 404"
+    },
+    {
       "station_id": "ITA00749267",
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "ITA00749299",
       "error": "HTTP 404"
     },
     {
@@ -80,10 +84,6 @@
     },
     {
       "station_id": "ITA00749298",
-      "error": "HTTP 404"
-    },
-    {
-      "station_id": "ITA00749299",
       "error": "HTTP 404"
     },
     {
@@ -143,11 +143,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00749513",
+      "station_id": "ITA00749514",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00749514",
+      "station_id": "ITA00749513",
       "error": "HTTP 404"
     },
     {
@@ -159,11 +159,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00749521",
+      "station_id": "ITA00749522",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00749522",
+      "station_id": "ITA00749521",
       "error": "HTTP 404"
     },
     {
@@ -187,11 +187,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITA00749537",
+      "station_id": "ITI0000LIBM",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITI0000LIBM",
+      "station_id": "ITA00749537",
       "error": "HTTP 404"
     },
     {
@@ -315,19 +315,19 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016155",
-      "error": "HTTP 404"
-    },
-    {
       "station_id": "ITM00016165",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016174",
+      "station_id": "ITM00016155",
       "error": "HTTP 404"
     },
     {
       "station_id": "ITM00016178",
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "ITM00016174",
       "error": "HTTP 404"
     },
     {
@@ -391,11 +391,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016334",
+      "station_id": "ITM00016333",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016333",
+      "station_id": "ITM00016334",
       "error": "HTTP 404"
     },
     {
@@ -419,11 +419,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016368",
+      "station_id": "ITM00016365",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016365",
+      "station_id": "ITM00016368",
       "error": "HTTP 404"
     },
     {
@@ -439,11 +439,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016454",
+      "station_id": "ITM00016442",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016442",
+      "station_id": "ITM00016454",
       "error": "HTTP 404"
     },
     {
@@ -467,11 +467,11 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016537",
+      "station_id": "ITM00016543",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016543",
+      "station_id": "ITM00016537",
       "error": "HTTP 404"
     },
     {
@@ -491,19 +491,19 @@
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00016585",
-      "error": "HTTP 404"
-    },
-    {
       "station_id": "ITM00016586",
       "error": "HTTP 404"
     },
     {
-      "station_id": "ITM00074930",
+      "station_id": "ITM00016585",
       "error": "HTTP 404"
     },
     {
       "station_id": "ITM00074951",
+      "error": "HTTP 404"
+    },
+    {
+      "station_id": "ITM00074930",
       "error": "HTTP 404"
     },
     {
