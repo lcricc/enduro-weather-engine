@@ -3,10 +3,16 @@ name: ENDURO MeteoHub Forecasts V2
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "15 4 * * *"
 
 permissions:
   contents: read
   actions: read
+
+concurrency:
+  group: enduro-meteohub-forecasts
+  cancel-in-progress: false
 
 jobs:
   meteohub-forecasts:
@@ -27,6 +33,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
           RUN_ID=$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
             --workflow meteohub_stations.yml \
@@ -47,6 +55,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.inventory.outputs.run_id }}
         run: |
+          set -euo pipefail
+
           mkdir -p data/observations/meteohub
 
           gh run download "$RUN_ID" \
