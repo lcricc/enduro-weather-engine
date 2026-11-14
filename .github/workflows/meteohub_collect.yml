@@ -33,7 +33,10 @@ jobs:
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
         run: python meteohub_collect.py
 
-      - name: Archive observations
+      - name: Clean and deduplicate observations
+        run: python meteohub_clean.py
+
+      - name: Archive raw and clean observations
         if: always()
         uses: actions/upload-artifact@v4
         with:
