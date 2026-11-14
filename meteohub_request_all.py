@@ -4,14 +4,13 @@
 
 import json
 import os
-import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
 BASE = "https://meteohub.agenziaitaliameteo.it"
-
 BATCH_SIZE = 7
+
 LARGE_NETWORKS = {
     "dpcn-puglia",
     "dpcn-sardegna",
@@ -30,7 +29,6 @@ def api(path, token=None, payload=None):
         headers["Authorization"] = f"Bearer {token}"
 
     body = None
-
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -49,13 +47,7 @@ def api(path, token=None, payload=None):
         return json.loads(content) if content else {}
 
 
-def utc_string(value):
-    return value.isoformat(
-        timespec="milliseconds"
-    ).replace("+00:00", "Z")
-
-
-def main():
+def login():
     auth = api(
         "/auth/login",
         payload={
@@ -65,13 +57,24 @@ def main():
     )
 
     token = (
-        auth
-        if isinstance(auth, str)
+        auth if isinstance(auth, str)
         else auth.get("access_token") or auth.get("token")
     )
 
     if not token:
         raise RuntimeError("Token MeteoHub assente")
+
+    return token
+
+
+def utc_string(value):
+    return value.isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
+
+
+def main():
+    token = login()
 
     datasets = api("/api/datasets", token)
     requests = api("/api/requests", token)
@@ -118,16 +121,14 @@ def main():
     print("Reti selezionate:", len(selected))
 
     for network in selected:
-
-        if network in LARGE_NETWORKS:
-            hours = SHORT_HOURS
-        else:
-            hours = NORMAL_HOURS
+        hours = (
+            SHORT_HOURS
+            if network in LARGE_NETWORKS
+            else NORMAL_HOURS
+        )
 
         start = end - timedelta(hours=hours)
 
-        # Identificativo distinto per rete, giorno e slot.
-        # Evita richieste duplicate nello stesso intervallo.
         name = (
             f"enduro-auto-{stamp}-"
             f"s{slot}-{network}"
@@ -149,42 +150,76 @@ def main():
             "only_reliable": True,
         }
 
-        try:
-            response = api(
-                "/api/data",
-                token,
-                payload,
-            )
+        success = False
 
-            print(
-                "OK:",
-                network,
-                "ore:",
-                hours,
-                "risposta:",
-                str(response)[:200],
-            )
+        for attempt in range(2):
+            try:
+                response = api(
+                    "/api/data",
+                    token,
+                    payload,
+                )
 
-            created += 1
-            existing_names.add(name)
+                print(
+                    "OK:",
+                    network,
+                    "ore:",
+                    hours,
+                    "risposta:",
+                    str(response)[:200],
+                )
 
-        except urllib.error.HTTPError as exc:
-            print(
-                "ERRORE HTTP:",
-                network,
-                exc.code,
-            )
-            failures += 1
+                created += 1
+                existing_names.add(name)
+                success = True
+                break
 
-        except (
-            urllib.error.URLError,
-            TimeoutError,
-        ) as exc:
-            print(
-                "ERRORE RETE:",
-                network,
-                type(exc).__name__,
-            )
+            except urllib.error.HTTPError as exc:
+                if exc.code == 401 and attempt == 0:
+                    print(
+                        "HTTP 401:",
+                        network,
+                        "- nuova autenticazione",
+                    )
+
+                    try:
+                        token = login()
+                    except (
+                        urllib.error.HTTPError,
+                        urllib.error.URLError,
+                        TimeoutError,
+                        ValueError,
+                        RuntimeError,
+                    ) as auth_error:
+                        print(
+                            "AUTENTICAZIONE FALLITA:",
+                            network,
+                            type(auth_error).__name__,
+                        )
+                        break
+
+                    continue
+
+                print(
+                    "ERRORE HTTP:",
+                    network,
+                    exc.code,
+                )
+                break
+
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                ValueError,
+            ) as exc:
+                print(
+                    "ERRORE:",
+                    network,
+                    type(exc).__name__,
+                )
+                break
+
+        if not success:
             failures += 1
 
     print()
@@ -194,10 +229,7 @@ def main():
     print("Errori:", failures)
 
     if failures:
-        print(
-            "ATTENZIONE: alcune reti non "
-            "hanno accettato la richiesta"
-        )
+        print("ATTENZIONE: richieste non riuscite")
 
     print("Operazione terminata")
 
