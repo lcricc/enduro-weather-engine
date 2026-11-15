@@ -5,54 +5,87 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
-      - name: Retrieve forecast archive
+      - name: Download historical MeteoHub archives
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --depth=1 origin forecast-archive
-          mkdir -p data/forecasts/national
-          git archive FETCH_HEAD data/forecasts/national | tar -xf -
 
-      - name: Diagnose observation coverage
+          mkdir -p historical/observations
+          mkdir -p historical/forecasts
+
+          gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --limit 100 \
+            --json tagName \
+            --jq '.[].tagName' \
+            > /tmp/enduro_tags.txt
+
+          OBS_COUNT=0
+          FC_COUNT=0
+
+          while IFS= read -r TAG; do
+            case "$TAG" in
+              meteohub-observations-*)
+                DEST="historical/observations/$TAG"
+                KIND="observations"
+                OBS_COUNT=$((OBS_COUNT + 1))
+                ;;
+              meteohub-forecasts-*)
+                DEST="historical/forecasts/$TAG"
+                KIND="forecasts"
+                FC_COUNT=$((FC_COUNT + 1))
+                ;;
+              *)
+                continue
+                ;;
+            esac
+
+            mkdir -p "$DEST"
+
+            gh release download "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$KIND-*.tar.gz" \
+              --dir "$DEST"
+
+            for FILE in "$DEST"/*.tar.gz; do
+              test -f "$FILE" || continue
+              tar -xzf "$FILE" -C "$DEST"
+            done
+
+          done < /tmp/enduro_tags.txt
+
+          echo "Observation archives: $OBS_COUNT"
+          echo "Forecast archives: $FC_COUNT"
+
+          test "$OBS_COUNT" -gt 0
+          test "$FC_COUNT" -gt 0
+
+      - name: Diagnose MeteoHub coverage
         run: python diagnose_observation_coverage.py
-
-      - name: Save diagnostic report
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add data/diagnostics/observation_coverage_latest.json
-
-          if ! git diff --cached --quiet; then
-            git commit -m "Update observation coverage diagnostics"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
 
       - name: Upload diagnostic report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: observation-coverage
+          name: meteohub-coverage-${{ github.run_id }}
           path: data/diagnostics/observation_coverage_latest.json
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 90
