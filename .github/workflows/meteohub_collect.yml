@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: enduro-meteohub-precipitation-check
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   collect:
@@ -34,8 +34,8 @@ jobs:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           VALID_HOUR_UTC: "2026-11-15T14:00:00+00:00"
-          EARLIEST_REQUEST_UTC: "2026-11-15T14:40:00+00:00"
-          DEADLINE_UTC: "2026-11-15T14:53:00+00:00"
+          EARLIEST_REQUEST_UTC: "2026-11-15T14:41:00+00:00"
+          DEADLINE_UTC: "2026-11-15T14:56:00+00:00"
         run: |
           python -u - <<'PY'
           import os
@@ -44,14 +44,6 @@ jobs:
           from datetime import datetime, timedelta, timezone
 
           from meteohub_request_all import api, login, utc_string
-
-          # JSON sizes after retaining only B13011 in the preceding hour's extract.
-          REGIONS_BY_EXTRACT_SIZE = (
-              ("dpcn-marche", 141181),
-              ("dpcn-lombardia", 301544),
-              ("dpcn-molise", 329400),
-              ("dpcn-liguria", 458993),
-          )
 
           def remaining_quota(token):
               result = api("/api/hourly", token)
@@ -62,7 +54,7 @@ jobs:
           def request_observations():
               hour = datetime.fromisoformat(os.environ["VALID_HOUR_UTC"])
               deadline = datetime.fromisoformat(os.environ["DEADLINE_UTC"])
-              name = f"enduro-precipitazioni-{hour:%Y%m%dT%H%MZ}"
+              name = f"enduro-precipitazioni-{hour:%Y%m%dT%H%MZ}-marche-molise"
               earliest = datetime.fromisoformat(os.environ["EARLIEST_REQUEST_UTC"])
               print(f"Finestra di misura fino alle {hour.isoformat()}. Controllo alle {earliest.isoformat()}.")
               while (seconds := (earliest - datetime.now(timezone.utc)).total_seconds()) > 0:
@@ -74,6 +66,9 @@ jobs:
               for item in previous:
                   if not isinstance(item, dict):
                       continue
+                  if str(item.get("id")) == "5879348":
+                      detail = str(item.get("error_message") or "Motivo non indicato").splitlines()[0][:200]
+                      print(f"Estrazione filtrata precedente: {detail}")
                   args = item.get("args")
                   args = args if isinstance(args, dict) else {}
                   if name in (item.get("name"), item.get("request_name"), args.get("request_name")):
@@ -84,13 +79,13 @@ jobs:
 
               payload = {
                   "request_name": name,
+                  "dataset_names": ["dpcn-marche", "dpcn-molise"],
                   "reftime": {
-                      "from": utc_string(hour - timedelta(hours=1) + timedelta(seconds=1)),
+                      "from": utc_string(hour - timedelta(hours=1, seconds=1)),
                       "to": utc_string(hour + timedelta(seconds=1)),
                   },
                   "output_format": "json",
                   "only_reliable": True,
-                  "filters": {"product": [{"code": "B13011"}]},
               }
 
               announced_quota = None
@@ -108,7 +103,6 @@ jobs:
                   if remaining > 0:
                       token = login()
                       storage = api("/api/usage", token)
-                      regions = [region for region, _ in REGIONS_BY_EXTRACT_SIZE]
                       if isinstance(storage, dict) and (
                           isinstance(storage.get("quota"), int)
                           and isinstance(storage.get("used"), int)
@@ -117,17 +111,6 @@ jobs:
                           print(f"Spazio libero MeteoHub: {free} byte")
                           if free <= 0:
                               raise RuntimeError("Spazio MeteoHub esaurito")
-                          regions = []
-                          estimated_bytes = 0
-                          for region, previous_size in REGIONS_BY_EXTRACT_SIZE:
-                              if (estimated_bytes + previous_size) * 1.20 > free:
-                                  break
-                              regions.append(region)
-                              estimated_bytes += previous_size
-                          if not regions:
-                              regions.append(REGIONS_BY_EXTRACT_SIZE[0][0])
-                      print(f"Reti richieste: {', '.join(regions)}")
-                      payload["dataset_names"] = regions
                       try:
                           result = api("/api/data", token, payload)
                       except urllib.error.HTTPError as error:
