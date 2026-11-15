@@ -1,0 +1,129 @@
+name: ENDURO MeteoHub Lazio Request Check
+
+on:
+  push:
+    branches: [meteohub-primo-confronto]
+    paths: [.github/workflows/meteohub_lazio_check.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 89575287681bf340220de6588f2104b0948f89b6
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check extraction quota and request a small Lazio sample
+        id: request
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        run: |
+          python -u - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode
+
+          from meteohub_request_all import api, login
+
+          def checked(path, token, payload=None, *, label):
+              try:
+                  return api(path, token, payload)
+              except HTTPError as error:
+                  body = error.read(1500)
+                  try:
+                      value = json.loads(body)
+                      detail = value.get("message") or value.get("detail") or value.get("error")
+                  except (ValueError, AttributeError):
+                      detail = None
+                  print(f"{label}: HTTP {error.code} {str(detail)[:250]}", flush=True)
+                  return None
+
+          def fields(network, start, end, token, *, rain=False, bbox=None):
+              expression = f"reftime: >={start},<={end};"
+              if rain:
+                  expression += "product:B13011;"
+              query = {"datasets": network, "q": expression, "onlySummaryStats": "true"}
+              if bbox:
+                  query.update(bbox)
+              data = checked("/api/fields?" + urlencode(query), token, label=f"Stima {network}")
+              if isinstance(data, dict):
+                  print(f"Stima {network} {start}–{end}: {data}", flush=True)
+                  return data
+
+          token = login()
+          usage = api("/api/usage", token)
+          quota = api("/api/hourly", token)
+          free = usage["quota"] - usage["used"]
+          print(f"Spazio MeteoHub disponibile: {free} byte su {usage['quota']}. Richieste residue: {quota['remaining']}.")
+
+          start, end = "2026-11-14 17:32:46", "2026-11-15 19:32:46"
+          for network in ("mnw", "dpcn-lazio"):
+              fields(network, start, end, token)
+
+          try_start, try_end = "2026-11-15 12:00:01", "2026-11-15 13:00:01"
+          bbox = {"latmin": 42.50, "latmax": 42.82, "lonmin": 12.98, "lonmax": 13.33}
+          ids = []
+          attempts = min(2, quota["remaining"])
+          for network in ("dpcn-lazio", "mnw"):
+              estimate = fields(network, try_start, try_end, token, rain=True, bbox=bbox)
+              if not estimate or not estimate.get("c") or attempts <= 0:
+                  continue
+              if estimate.get("s", 0) * 2.8 >= free:
+                  print(f"Campione {network}: stima superiore allo spazio disponibile.")
+                  continue
+              attempts -= 1
+              answer = checked("/api/data", token, {
+                  "request_name": f"enduro-lazio-diagnosi-20261115-{network}",
+                  "dataset_names": [network],
+                  "reftime": {"from": "2026-11-15T12:00:01.000Z", "to": "2026-11-15T13:00:01.000Z"},
+                  "filters": {"product": [{"code": "B13011"}], "bounding_box": bbox},
+                  "output_format": "json",
+                  "only_reliable": True,
+              }, label=f"Richiesta mirata {network}")
+              if isinstance(answer, dict):
+                  ident = str(answer.get("request_id") or answer.get("id") or "")
+                  if ident.isascii() and ident.isdecimal():
+                      print(f"Richiesta mirata {network}: ID {ident}")
+                      ids.append(ident)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+              print("ids=" + ",".join(ids), file=stream)
+          PY
+      - name: Verify measurements returned for Lazio
+        if: steps.request.outputs.ids != ''
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+          REQUEST_IDS: ${{ steps.request.outputs.ids }}
+        run: |
+          mkdir -p targeted
+          cd targeted
+          python "$GITHUB_WORKSPACE/meteohub_collect.py" --request-ids "$REQUEST_IDS" --wait-seconds 180
+          python "$GITHUB_WORKSPACE/meteohub_clean.py"
+          python - <<'PY'
+          import csv
+          from collections import Counter
+          from pathlib import Path
+          with Path("data/observations/meteohub/clean/observations_clean.csv").open() as source:
+              rows = list(csv.DictReader(source))
+          rain = [row for row in rows if row["variable"] == "B13011"]
+          stations = {(row["network"], row["station_id"], row["station_name"]) for row in rain}
+          print("Misure pioggia per rete:", dict(Counter(r["network"] for r in rain)))
+          print("Stazioni pioggia:", sorted(stations))
+          PY
+      - name: Keep the diagnostic sample
+        if: always() && steps.request.outputs.ids != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-lazio-request-check
+          path: targeted/data/observations/meteohub/
+          if-no-files-found: ignore
+          retention-days: 7
