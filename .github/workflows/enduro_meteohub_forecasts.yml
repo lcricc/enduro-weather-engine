@@ -8,11 +8,6 @@ on:
         description: "ID raccolta MeteoHub per includere le stazioni di Liguria, Lombardia, Marche e Molise"
         required: false
         type: string
-  push:
-    branches:
-      - meteohub-stazioni-regionali
-    paths:
-      - .github/workflows/enduro_meteohub_forecasts.yml
   schedule:
     - cron: "15 4 * * *"
 
@@ -91,11 +86,10 @@ jobs:
           wc -l data/observations/meteohub/stations_meteohub.csv
 
       - name: Add regional stations with hourly observations
-        if: ${{ inputs.regional_observation_run || github.event_name == 'push' }}
+        if: ${{ inputs.regional_observation_run }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.regional_observation_run || '43706641016' }}
-          ONLY_REGIONAL_STATIONS: ${{ github.event_name == 'push' }}
+          RUN_ID: ${{ inputs.regional_observation_run }}
         run: |
           set -euo pipefail
           if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
@@ -122,7 +116,6 @@ jobs:
 
           python - <<'PY'
           import csv
-          import os
           from collections import Counter, defaultdict
           from datetime import timedelta
 
@@ -136,8 +129,6 @@ jobs:
               candidates = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
           with OUTPUT.with_name("stations_original.csv").open(encoding="utf-8-sig", newline="") as source:
               stations = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
-          if os.environ["ONLY_REGIONAL_STATIONS"] == "true":
-              stations.clear()
 
           observations, _ = load_observations(load_approved())
           latest = {}
