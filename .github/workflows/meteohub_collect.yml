@@ -8,11 +8,6 @@ on:
         description: "ID MeteoHub già esistenti, separati da virgola (vuoto = raccolta ordinaria)"
         required: false
         type: string
-  push:
-    branches:
-      - meteohub-stazioni-regionali
-    paths:
-      - .github/workflows/meteohub_collect.yml
   schedule:
     - cron: "30 1,7,13,19 * * *"
 
@@ -38,7 +33,7 @@ jobs:
           python-version: "3.11"
 
       - name: Request fresh MeteoHub observations
-        if: ${{ !(inputs.request_ids || github.event_name == 'push') }}
+        if: ${{ !inputs.request_ids }}
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
@@ -48,7 +43,7 @@ jobs:
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          REQUEST_IDS: ${{ inputs.request_ids || (github.event_name == 'push' && '5877923,5877924,5877925,5877926') || '' }}
+          REQUEST_IDS: ${{ inputs.request_ids }}
         shell: bash
         run: |
           if [[ -n "$REQUEST_IDS" ]]; then
@@ -60,20 +55,20 @@ jobs:
           fi
 
       - name: Clean and deduplicate observations
-        working-directory: ${{ (inputs.request_ids || github.event_name == 'push') && 'targeted' || '.' }}
+        working-directory: ${{ inputs.request_ids && 'targeted' || '.' }}
         run: python "$GITHUB_WORKSPACE/meteohub_clean.py"
 
       - name: Archive observations
-        if: ${{ success() || (always() && !(inputs.request_ids || github.event_name == 'push')) }}
+        if: ${{ success() || (always() && !inputs.request_ids) }}
         uses: actions/upload-artifact@v4
         with:
           name: meteohub-observations-${{ github.run_id }}
-          path: ${{ (inputs.request_ids || github.event_name == 'push') && 'targeted/data/observations/meteohub/' || 'data/observations/meteohub/' }}
+          path: ${{ inputs.request_ids && 'targeted/data/observations/meteohub/' || 'data/observations/meteohub/' }}
           if-no-files-found: warn
           retention-days: 90
 
       - name: Upload MeteoHub request statuses on failure
-        if: ${{ failure() && (inputs.request_ids || github.event_name == 'push') }}
+        if: ${{ failure() && inputs.request_ids }}
         uses: actions/upload-artifact@v4
         with:
           name: meteohub-request-status-${{ github.run_id }}
