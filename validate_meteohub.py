@@ -1,10 +1,12 @@
 
 #!/usr/bin/env python3
-"""ENDURO WEATHER ENGINE - MeteoHub Scientific Validation V3.
+"""ENDURO WEATHER ENGINE - MeteoHub Scientific Validation V3.1.
 
 Official metrics use common samples from all available models.
 Preliminary metrics use valid pairs for each individual model.
 Only manually approved BUFR metadata signatures are accepted.
+
+V3.1 adds per-model diagnostics without changing validation rules.
 """
 
 import csv
@@ -28,8 +30,13 @@ VARIABLES = {
 }
 
 FIELDS = [
-    "model", "variable", "lead_bucket",
-    "n", "mae", "rmse", "bias",
+    "model",
+    "variable",
+    "lead_bucket",
+    "n",
+    "mae",
+    "rmse",
+    "bias",
 ]
 
 
@@ -347,6 +354,9 @@ def validate():
     candidates = defaultdict(list)
     all_models = set()
 
+    # V3.1: detailed diagnostics by model.
+    model_diagnostics = defaultdict(Counter)
+
     for path in forecast_files:
 
         with gzip.open(
@@ -365,6 +375,9 @@ def validate():
 
                 if model:
                     all_models.add(model)
+                    model_diagnostics[model][
+                        "forecast_rows"
+                    ] += 1
 
                 issue = timestamp(
                     row.get("acquired_utc")
@@ -382,10 +395,18 @@ def validate():
                     diagnostics[
                         "invalid_forecast_time"
                     ] += 1
+
+                    model_diagnostics[model][
+                        "invalid_forecast_time"
+                    ] += 1
                     continue
 
                 if valid.minute or valid.second:
                     diagnostics[
+                        "non_hourly_forecast"
+                    ] += 1
+
+                    model_diagnostics[model][
                         "non_hourly_forecast"
                     ] += 1
                     continue
@@ -398,6 +419,10 @@ def validate():
 
                 if bucket is None:
                     diagnostics[
+                        "outside_lead_window"
+                    ] += 1
+
+                    model_diagnostics[model][
                         "outside_lead_window"
                     ] += 1
                     continue
@@ -414,6 +439,10 @@ def validate():
                     diagnostics[
                         "missing_forecast_station"
                     ] += 1
+
+                    model_diagnostics[model][
+                        "missing_forecast_station"
+                    ] += 1
                     continue
 
                 for variable in VARIABLES.values():
@@ -426,7 +455,15 @@ def validate():
                         diagnostics[
                             "missing_prediction_value"
                         ] += 1
+
+                        model_diagnostics[model][
+                            f"{variable}_missing"
+                        ] += 1
                         continue
+
+                    model_diagnostics[model][
+                        f"{variable}_valid"
+                    ] += 1
 
                     obs_key = (
                         network,
@@ -439,9 +476,17 @@ def validate():
 
                         diagnostics["unmatched"] += 1
 
+                        model_diagnostics[model][
+                            f"{variable}_unmatched"
+                        ] += 1
+
                         if valid > now:
                             diagnostics[
                                 "forecast_valid_time_in_future"
+                            ] += 1
+
+                            model_diagnostics[model][
+                                "future"
                             ] += 1
 
                         elif (
@@ -452,9 +497,17 @@ def validate():
                                 "forecast_after_latest_observation"
                             ] += 1
 
+                            model_diagnostics[model][
+                                "after_latest_observation"
+                            ] += 1
+
                         else:
                             diagnostics[
                                 "missing_observation_at_valid_time"
+                            ] += 1
+
+                            model_diagnostics[model][
+                                "missing_observation"
                             ] += 1
 
                         continue
@@ -473,6 +526,10 @@ def validate():
                         )
                     )
 
+                    model_diagnostics[model][
+                        f"{variable}_matched"
+                    ] += 1
+
     events = defaultdict(dict)
 
     for (
@@ -486,11 +543,19 @@ def validate():
             diagnostics[
                 "duplicate_forecasts"
             ] += 1
+
+            model_diagnostics[model][
+                "duplicate_forecasts"
+            ] += 1
             continue
 
         events[
             (issue, obs_key, bucket)
         ][model] = values[0]
+
+        model_diagnostics[model][
+            "unique_pairs"
+        ] += 1
 
     official_errors = defaultdict(list)
     preliminary_errors = defaultdict(list)
@@ -552,9 +617,64 @@ def validate():
         preliminary_errors
     )
 
+    # V3.1: create a per-model diagnostic report.
+    model_report = {
+        model: dict(model_diagnostics[model])
+        for model in sorted(all_models)
+    }
+
+    print("\n=== DIAGNOSTICA MODELLI V3.1 ===")
+
+    for model in sorted(all_models):
+        stats = model_diagnostics[model]
+
+        print(f"\nMODELLO: {model}")
+        print(
+            "Righe raccolte:",
+            stats["forecast_rows"]
+        )
+        print(
+            "Temperatura valida:",
+            stats["temperature_2m_c_valid"]
+        )
+        print(
+            "Temperatura abbinata:",
+            stats["temperature_2m_c_matched"]
+        )
+        print(
+            "Vento valido:",
+            stats["wind_speed_10m_kmh_valid"]
+        )
+        print(
+            "Vento abbinato:",
+            stats["wind_speed_10m_kmh_matched"]
+        )
+        print(
+            "Coppie univoche:",
+            stats["unique_pairs"]
+        )
+        print(
+            "Valori mancanti temperatura:",
+            stats["temperature_2m_c_missing"]
+        )
+        print(
+            "Valori mancanti vento:",
+            stats["wind_speed_10m_kmh_missing"]
+        )
+        print(
+            "Previsioni future:",
+            stats["future"]
+        )
+        print(
+            "Osservazioni mancanti:",
+            stats["missing_observation"]
+        )
+
+    print("\n=== FINE DIAGNOSTICA ===\n")
+
     report = {
         "engine": "ENDURO WEATHER ENGINE",
-        "version": "MeteoHub Validation V3",
+        "version": "MeteoHub Validation V3.1",
         "generated_utc": now.isoformat(),
         "forecast_files": len(forecast_files),
         "forecast_models": sorted(all_models),
@@ -570,6 +690,7 @@ def validate():
         "forecast_diagnostics": dict(
             diagnostics
         ),
+        "model_diagnostics": model_report,
         "metrics": metrics,
         "preliminary_metrics": preliminary_metrics,
         "status": (
@@ -612,6 +733,16 @@ def validate():
     save_csv(
         OUT / "preliminary_metrics.csv",
         preliminary_metrics
+    )
+
+    (
+        OUT / "model_diagnostics.json"
+    ).write_text(
+        json.dumps(
+            model_report,
+            indent=2
+        ),
+        encoding="utf-8"
     )
 
     print(
