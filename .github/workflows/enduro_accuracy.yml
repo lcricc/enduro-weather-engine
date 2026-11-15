@@ -1,0 +1,93 @@
+
+name: ENDURO Model Accuracy Analysis
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - ENDURO MeteoHub Scientific Validation
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: enduro-model-accuracy
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Find scientific validation run
+        id: validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$SOURCE_RUN_ID"
+          else
+            RUN_ID=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow enduro_validation.yml \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+          fi
+
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "No successful validation found"
+            exit 1
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Validation run: $RUN_ID"
+
+      - name: Download scientific validation report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.validation.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p data/validation/meteohub
+
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "enduro-validation-$RUN_ID" \
+            --dir data/validation/meteohub
+
+          test -f \
+            data/validation/meteohub/validation_latest.json
+
+      - name: Analyze model accuracy
+        run: python analyze_model_accuracy.py
+
+      - name: Upload accuracy analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enduro-accuracy-${{ github.run_id }}
+          path: data/analysis/model_accuracy/
+          if-no-files-found: warn
+          retention-days: 90
