@@ -1,0 +1,221 @@
+name: ENDURO Hourly Precipitation Check
+
+on:
+  push:
+    branches:
+      - meteohub-pioggia-oraria
+    paths:
+      - .github/workflows/precipitation_validation_test.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: enduro-hourly-precipitation-check
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download historical GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p historical/observations
+          mkdir -p historical/forecasts
+          mkdir -p data/forecasts/national
+          mkdir -p data/observations/meteohub/clean
+
+          gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --limit 100 \
+            --json tagName \
+            --jq '.[].tagName' \
+            > /tmp/enduro_tags.txt
+
+          OBS_COUNT=0
+          FC_COUNT=0
+
+          while IFS= read -r TAG; do
+            case "$TAG" in
+
+              meteohub-observations-*)
+                DEST="historical/observations/$TAG"
+                mkdir -p "$DEST"
+
+                gh release download "$TAG" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --pattern 'observations-*.tar.gz' \
+                  --dir "$DEST"
+
+                for FILE in "$DEST"/*.tar.gz; do
+                  test -f "$FILE" || continue
+                  tar -xzf "$FILE" -C "$DEST"
+                done
+
+                OBS_COUNT=$((OBS_COUNT + 1))
+                ;;
+
+              meteohub-forecasts-*)
+                DEST="historical/forecasts/$TAG"
+                mkdir -p "$DEST"
+
+                gh release download "$TAG" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --pattern 'forecasts-*.tar.gz' \
+                  --dir "$DEST"
+
+                for FILE in "$DEST"/*.tar.gz; do
+                  test -f "$FILE" || continue
+                  tar -xzf "$FILE" -C "$DEST"
+                done
+
+                FC_COUNT=$((FC_COUNT + 1))
+                ;;
+
+            esac
+          done < /tmp/enduro_tags.txt
+
+          echo "Observation releases: $OBS_COUNT"
+          echo "Forecast releases: $FC_COUNT"
+
+          test "$OBS_COUNT" -gt 0
+          test "$FC_COUNT" -gt 0
+
+      - name: Merge historical observations
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          files = sorted(
+              Path("historical/observations").rglob(
+                  "observations_clean.csv"
+              )
+          )
+
+          if not files:
+              raise RuntimeError("No historical observations")
+
+          output = Path(
+              "data/observations/meteohub/clean/"
+              "observations_clean.csv"
+          )
+
+          seen = set()
+          total = 0
+          unique = 0
+          fields = None
+
+          with output.open(
+              "w", newline="", encoding="utf-8"
+          ) as destination:
+
+              writer = None
+
+              for path in files:
+                  with path.open(
+                      newline="", encoding="utf-8-sig"
+                  ) as source:
+
+                      reader = csv.DictReader(source)
+
+                      if fields is None:
+                          fields = reader.fieldnames
+                          if not fields:
+                              raise ValueError(
+                                  "Missing CSV header"
+                              )
+                          writer = csv.DictWriter(
+                              destination,
+                              fieldnames=fields
+                          )
+                          writer.writeheader()
+
+                      if reader.fieldnames != fields:
+                          raise ValueError(
+                              f"CSV schema mismatch: {path}"
+                          )
+
+                      for row in reader:
+                          total += 1
+                          key = tuple(
+                              row.get(field, "")
+                              for field in fields
+                          )
+
+                          if key in seen:
+                              continue
+
+                          seen.add(key)
+                          writer.writerow(row)
+                          unique += 1
+
+          print("Observation files:", len(files))
+          print("Total rows:", total)
+          print("Unique rows:", unique)
+          PY
+
+      - name: Prepare historical forecasts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          COUNT=0
+
+          while IFS= read -r -d '' FILE; do
+            NAME=$(basename "$FILE")
+            DEST="data/forecasts/national/$NAME"
+
+            if [ -f "$DEST" ]; then
+              if ! cmp -s "$FILE" "$DEST"; then
+                echo "Conflicting forecast: $NAME"
+                exit 1
+              fi
+            else
+              cp "$FILE" "$DEST"
+              COUNT=$((COUNT + 1))
+            fi
+
+          done < <(
+            find historical/forecasts \
+              -type f \
+              -name 'forecasts_meteohub_*.csv.gz' \
+              -print0
+          )
+
+          echo "Historical forecast files: $COUNT"
+          test "$COUNT" -gt 0
+
+      - name: Run scientific validation
+        run: python validate_meteohub.py
+
+      - name: Check the precipitation metrics in the accuracy analysis
+        run: python analyze_model_accuracy.py
+
+      - name: Upload trial reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enduro-precipitation-test-${{ github.run_id }}
+          path: |
+            data/validation/meteohub/
+            data/analysis/model_accuracy/
+          if-no-files-found: warn
+          retention-days: 90
