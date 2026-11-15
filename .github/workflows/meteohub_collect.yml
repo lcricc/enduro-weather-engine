@@ -1,18 +1,22 @@
-
 name: ENDURO MeteoHub Automatic Collection
 
 on:
   workflow_dispatch:
     inputs:
       request_ids:
-        description: "ID MeteoHub già esistenti, separati da virgola (vuoto = raccolta ordinaria)"
+        description: "ID MeteoHub esistenti separati da virgola (vuoto = raccolta nazionale)"
         required: false
         type: string
   schedule:
-    - cron: "30 1,7,13,19 * * *"
+    - cron: "50 */3 * * *"
+  push:
+    branches: [meteohub-ciclo-nazionale]
+    paths:
+      - .github/workflows/meteohub_collect.yml
+      - meteohub_national_cycle.py
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 concurrency:
@@ -23,30 +27,18 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Request fresh MeteoHub observations
-        if: ${{ !inputs.request_ids }}
-        env:
-          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
-          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-        run: python meteohub_request_all.py
-
-      - name: Request missing rain intervals
-        if: ${{ !inputs.request_ids }}
+      - name: Download the latest rain-gap plan
+        if: ${{ !inputs.request_ids && github.event_name != 'push' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
-          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
@@ -55,44 +47,17 @@ jobs:
           [ -n "$run_id" ] || exit 0
           gh run download "$run_id" --name "enduro-validation-$run_id" \
             --dir "$RUNNER_TEMP/rain-recovery"
-          plan="$RUNNER_TEMP/rain-recovery/rain_recovery_plan.json"
-          if [ -f "$plan" ]; then
-            python meteohub_rain_recovery.py "$plan"
-          fi
-
-      - name: Collect completed MeteoHub observations
+      - name: Collect, verify the published GitHub copy, and free MeteoHub storage
         env:
+          GH_TOKEN: ${{ github.token }}
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           REQUEST_IDS: ${{ inputs.request_ids }}
         shell: bash
         run: |
-          if [[ -n "$REQUEST_IDS" ]]; then
-            mkdir -p targeted
-            cd targeted
-            python "$GITHUB_WORKSPACE/meteohub_collect.py" --request-ids "$REQUEST_IDS" --wait-seconds 240
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            python meteohub_national_cycle.py --end 2026-11-15T15:00:00+00:00 --hours 1
           else
-            python meteohub_collect.py
+            python meteohub_national_cycle.py --request-ids "$REQUEST_IDS"
           fi
-
-      - name: Clean and deduplicate observations
-        working-directory: ${{ inputs.request_ids && 'targeted' || '.' }}
-        run: python "$GITHUB_WORKSPACE/meteohub_clean.py"
-
-      - name: Archive observations
-        if: ${{ success() || (always() && !inputs.request_ids) }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: meteohub-observations-${{ github.run_id }}
-          path: ${{ inputs.request_ids && 'targeted/data/observations/meteohub/' || 'data/observations/meteohub/' }}
-          if-no-files-found: warn
-          retention-days: 90
-
-      - name: Upload MeteoHub request statuses on failure
-        if: ${{ failure() && inputs.request_ids }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: meteohub-request-status-${{ github.run_id }}
-          path: targeted/data/observations/meteohub/collection_report.json
-          if-no-files-found: ignore
-          retention-days: 90
