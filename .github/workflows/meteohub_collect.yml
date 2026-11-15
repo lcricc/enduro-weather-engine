@@ -33,9 +33,9 @@ jobs:
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          VALID_HOUR_UTC: "2026-11-15T13:00:00+00:00"
-          EARLIEST_REQUEST_UTC: "2026-11-15T13:40:00+00:00"
-          DEADLINE_UTC: "2026-11-15T13:50:00+00:00"
+          VALID_HOUR_UTC: "2026-11-15T14:00:00+00:00"
+          EARLIEST_REQUEST_UTC: "2026-11-15T14:40:00+00:00"
+          DEADLINE_UTC: "2026-11-15T14:53:00+00:00"
         run: |
           python -u - <<'PY'
           import os
@@ -44,6 +44,14 @@ jobs:
           from datetime import datetime, timedelta, timezone
 
           from meteohub_request_all import api, login, utc_string
+
+          # Sizes in bytes from the immediately preceding complete hour.
+          REGIONS_BY_EXTRACT_SIZE = (
+              ("dpcn-marche", 451973),
+              ("dpcn-molise", 770515),
+              ("dpcn-lombardia", 1147135),
+              ("dpcn-liguria", 1209429),
+          )
 
           def remaining_quota(token):
               result = api("/api/hourly", token)
@@ -54,7 +62,7 @@ jobs:
           def request_observations():
               hour = datetime.fromisoformat(os.environ["VALID_HOUR_UTC"])
               deadline = datetime.fromisoformat(os.environ["DEADLINE_UTC"])
-              name = f"enduro-precipitazioni-{hour:%Y%m%dT%H%MZ}-quattro-reti"
+              name = f"enduro-precipitazioni-{hour:%Y%m%dT%H%MZ}"
               earliest = datetime.fromisoformat(os.environ["EARLIEST_REQUEST_UTC"])
               print(f"Finestra di misura fino alle {hour.isoformat()}. Controllo alle {earliest.isoformat()}.")
               while (seconds := (earliest - datetime.now(timezone.utc)).total_seconds()) > 0:
@@ -76,11 +84,8 @@ jobs:
 
               payload = {
                   "request_name": name,
-                  "dataset_names": [
-                      "dpcn-liguria", "dpcn-lombardia", "dpcn-marche", "dpcn-molise",
-                  ],
                   "reftime": {
-                      "from": utc_string(hour - timedelta(hours=1, seconds=1)),
+                      "from": utc_string(hour - timedelta(hours=1) + timedelta(seconds=1)),
                       "to": utc_string(hour + timedelta(seconds=1)),
                   },
                   "output_format": "json",
@@ -102,6 +107,7 @@ jobs:
                   if remaining > 0:
                       token = login()
                       storage = api("/api/usage", token)
+                      regions = [region for region, _ in REGIONS_BY_EXTRACT_SIZE]
                       if isinstance(storage, dict) and (
                           isinstance(storage.get("quota"), int)
                           and isinstance(storage.get("used"), int)
@@ -110,6 +116,17 @@ jobs:
                           print(f"Spazio libero MeteoHub: {free} byte")
                           if free <= 0:
                               raise RuntimeError("Spazio MeteoHub esaurito")
+                          regions = []
+                          estimated_bytes = 0
+                          for region, previous_size in REGIONS_BY_EXTRACT_SIZE:
+                              if (estimated_bytes + previous_size) * 1.05 > free:
+                                  break
+                              regions.append(region)
+                              estimated_bytes += previous_size
+                          if not regions:
+                              regions.append(REGIONS_BY_EXTRACT_SIZE[0][0])
+                      print(f"Reti richieste: {', '.join(regions)}")
+                      payload["dataset_names"] = regions
                       try:
                           result = api("/api/data", token, payload)
                       except urllib.error.HTTPError as error:
@@ -130,7 +147,7 @@ jobs:
               output.write(f"id={identifier}\n")
           PY
 
-      - name: Collect the four regional extracts
+      - name: Collect the regional extract
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
