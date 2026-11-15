@@ -1,12 +1,16 @@
 
 #!/usr/bin/env python3
-"""ENDURO WEATHER ENGINE - MeteoHub Scientific Validation V3.1.
+"""ENDURO WEATHER ENGINE - MeteoHub Scientific Validation V3.2.
 
-Official metrics use common samples from all available models.
-Preliminary metrics use valid pairs for each individual model.
+Official metrics require identical observation events for all 8 models.
+Preliminary metrics use valid model-observation pairs.
 Only manually approved BUFR metadata signatures are accepted.
 
-V3.1 adds per-model diagnostics without changing validation rules.
+V3.2:
+- Explicit list of eight official models
+- Excludes obsolete ECMWF AIFS identifier from comparisons
+- Preserves historical forecast archives
+- Retains V3.1 per-model diagnostics
 """
 
 import csv
@@ -27,6 +31,21 @@ APPROVED = Path("meteohub_approved_metadata.json")
 VARIABLES = {
     "B12101": "temperature_2m_c",
     "B11002": "wind_speed_10m_kmh",
+}
+
+OFFICIAL_MODELS = {
+    "ecmwf_ifs025",
+    "ecmwf_aifs025_single",
+    "icon_seamless",
+    "gfs_seamless",
+    "meteofrance_seamless",
+    "ukmo_seamless",
+    "gem_seamless",
+    "arpege_world",
+}
+
+LEGACY_MODELS = {
+    "ecmwf_aifs025",
 }
 
 FIELDS = [
@@ -89,7 +108,9 @@ def load_approved():
 
     for item in raw:
         if not isinstance(item, dict):
-            raise ValueError("Invalid metadata entry")
+            raise ValueError(
+                "Invalid metadata entry"
+            )
 
         code = item.get("code")
         unit = item.get("unit")
@@ -352,9 +373,10 @@ def validate():
 
     diagnostics = Counter()
     candidates = defaultdict(list)
-    all_models = set()
 
-    # V3.1: detailed diagnostics by model.
+    # Exactly eight models are required.
+    all_models = set(OFFICIAL_MODELS)
+
     model_diagnostics = defaultdict(Counter)
 
     for path in forecast_files:
@@ -373,11 +395,23 @@ def validate():
                     row.get("model") or ""
                 ).strip()
 
-                if model:
-                    all_models.add(model)
-                    model_diagnostics[model][
-                        "forecast_rows"
+                # Preserve historical files but do not
+                # use the obsolete AIFS identifier.
+                if model in LEGACY_MODELS:
+                    diagnostics[
+                        "legacy_rows_excluded"
                     ] += 1
+                    continue
+
+                if model not in OFFICIAL_MODELS:
+                    diagnostics[
+                        "unknown_model_rows"
+                    ] += 1
+                    continue
+
+                model_diagnostics[model][
+                    "forecast_rows"
+                ] += 1
 
                 issue = timestamp(
                     row.get("acquired_utc")
@@ -401,7 +435,11 @@ def validate():
                     ] += 1
                     continue
 
-                if valid.minute or valid.second:
+                if (
+                    valid.minute
+                    or valid.second
+                    or valid.microsecond
+                ):
                     diagnostics[
                         "non_hourly_forecast"
                     ] += 1
@@ -591,7 +629,6 @@ def validate():
             diagnostics[
                 "partial_events"
             ] += 1
-
             continue
 
         diagnostics[
@@ -617,13 +654,12 @@ def validate():
         preliminary_errors
     )
 
-    # V3.1: create a per-model diagnostic report.
     model_report = {
         model: dict(model_diagnostics[model])
         for model in sorted(all_models)
     }
 
-    print("\n=== DIAGNOSTICA MODELLI V3.1 ===")
+    print("\n=== DIAGNOSTICA MODELLI V3.2 ===")
 
     for model in sorted(all_models):
         stats = model_diagnostics[model]
@@ -674,7 +710,7 @@ def validate():
 
     report = {
         "engine": "ENDURO WEATHER ENGINE",
-        "version": "MeteoHub Validation V3.1",
+        "version": "MeteoHub Validation V3.2",
         "generated_utc": now.isoformat(),
         "forecast_files": len(forecast_files),
         "forecast_models": sorted(all_models),
@@ -707,9 +743,10 @@ def validate():
             "Only manually approved metadata accepted",
             "Exact hourly UTC matching required",
             "Forecast acquisition is a proxy for issuance",
-            "Official metrics require common-model samples",
+            "Official metrics require common-eight-model samples",
             "Preliminary metrics may use different samples per model",
             "Preliminary metrics are not official model rankings",
+            "Legacy ECMWF AIFS rows excluded from calculations",
             "Precipitation excluded pending BUFR review",
             "Zero metrics does not establish accuracy",
         ],
