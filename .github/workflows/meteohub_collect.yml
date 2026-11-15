@@ -36,8 +36,8 @@ jobs:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           VALID_HOUR_UTC: "2026-11-15T12:00:00+00:00"
-          READ_DELAY_MINUTES: "6"
-          REQUEST_ROUND: "1"
+          READ_DELAY_MINUTES: "9"
+          REQUEST_ROUND: "2"
         run: |
           python -u - <<'PY'
           import os
@@ -84,8 +84,8 @@ jobs:
                       "request_name": name,
                       "dataset_names": [network],
                       "reftime": {
-                          "from": utc_string(hour - timedelta(seconds=1)),
-                          "to": utc_string(hour + timedelta(seconds=1)),
+                          "from": utc_string(hour - timedelta(hours=2)),
+                          "to": utc_string(hour + timedelta(minutes=5)),
                       },
                       "output_format": "json",
                       "only_reliable": True,
