@@ -2,19 +2,24 @@
 #!/usr/bin/env python3
 """ENDURO WEATHER ENGINE - Raccolta robusta MeteoHub."""
 
+import argparse
 import json
 import os
 import re
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
+from meteohub_clean import utc_time
+
 BASE_URL = "https://meteohub.agenziaitaliameteo.it"
 OUTPUT_DIR = Path("data/observations/meteohub")
 MAX_BYTES = 50 * 1024 * 1024
+FAILED_STATUSES = {"FAILURE", "FAILED", "REVOKED", "CANCELLED", "CANCELED", "EXPIRED"}
 
 
 def api_json(path, token=None, payload=None):
@@ -214,15 +219,75 @@ def classify_error(exc):
     return type(exc).__name__
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--request-ids",
+        help="ID di richieste esistenti, separati da virgola o spazio",
+    )
+    parser.add_argument(
+        "--wait-seconds", type=int, default=0,
+        help="Secondi di attesa massima per le richieste selezionate",
+    )
+    args = parser.parse_args()
+    ids = ()
+    if args.request_ids is not None:
+        ids = tuple(dict.fromkeys(re.split(r"[,\s]+", args.request_ids.strip())))
+        if any(not re.fullmatch(r"[0-9]+", request_id) for request_id in ids):
+            parser.error("--request-ids richiede uno o più ID numerici")
+    if not 0 <= args.wait_seconds <= 600 or (args.wait_seconds and not ids):
+        parser.error("--wait-seconds deve essere tra 0 e 600 ed è riservato alla raccolta per ID")
+    return ids, args.wait_seconds
+
+
+def select_requests(token, request_ids, wait_seconds):
+    deadline = time.monotonic() + wait_seconds
+    selected = {}
+    statuses = {}
+
+    while True:
+        requests = api_json("/api/requests", token=token)
+        if not isinstance(requests, list):
+            raise RuntimeError("Elenco richieste MeteoHub non valido")
+        requests_by_id = {
+            str(item["id"]): item for item in requests
+            if isinstance(item, dict) and item.get("id") is not None
+        }
+
+        if not request_ids:
+            return len(requests), requests, {}
+
+        waiting = []
+        for request_id in request_ids:
+            if request_id in selected:
+                continue
+            item = requests_by_id.get(request_id)
+            status = str(item.get("status") or "UNKNOWN").upper() if item else "NOT_LISTED"
+            if status == "SUCCESS" and safe_filename(item.get("fileoutput")):
+                selected[request_id] = item
+            elif status in FAILED_STATUSES:
+                selected[request_id] = item
+            else:
+                if status == "SUCCESS":
+                    status = "SUCCESS_WITHOUT_FILE"
+                waiting.append(request_id)
+            if statuses.get(request_id) != status:
+                statuses[request_id] = status
+                print(f"Stato richiesta {request_id}: {status}", flush=True)
+
+        remaining = deadline - time.monotonic()
+        if not waiting or remaining <= 0:
+            return len(requests), list(selected.values()), statuses
+        time.sleep(min(15, remaining))
+
+
 def main():
     print("ENDURO - RACCOLTA METEOHUB ROBUSTA")
 
     # Gli errori generali restano bloccanti.
+    request_ids, wait_seconds = parse_args()
     token = login()
-    requests = api_json("/api/requests", token=token)
-
-    if not isinstance(requests, list):
-        raise RuntimeError("Elenco richieste MeteoHub non valido")
+    requests_total, requests, statuses = select_requests(token, request_ids, wait_seconds)
 
     completed = [
         item
@@ -235,7 +300,7 @@ def main():
         "generated_utc": datetime.now(
             timezone.utc
         ).isoformat(),
-        "requests_total": len(requests),
+        "requests_total": requests_total,
         "requests_completed": len(completed),
         "files_saved": 0,
         "records_downloaded": 0,
@@ -244,7 +309,11 @@ def main():
         "saved_requests": [],
     }
 
-    print("Richieste totali:", len(requests))
+    if request_ids:
+        report["requested_statuses"] = statuses
+        report["request_results"] = {}
+
+    print("Richieste totali:", requests_total)
     print("Richieste completate:", len(completed))
 
     for item in completed:
@@ -292,6 +361,16 @@ def main():
         report["files_saved"] += 1
         report["records_downloaded"] += len(records)
         report["saved_requests"].append(request_id)
+        if request_ids:
+            latest = max(
+                filter(None, (utc_time(record.get("date")) for record in records)),
+                default=None,
+            )
+            report["request_results"][str(request_id)] = {
+                "records": len(records),
+                "latest_record_utc": latest,
+            }
+            print(f"Ultimo record richiesta {request_id}: {latest}")
 
         print(
             f"OK richiesta {request_id}: "
@@ -310,6 +389,11 @@ def main():
 
     if report["errors"]:
         print("ATTENZIONE: alcune estrazioni sono state saltate")
+
+    if request_ids:
+        missing = [request_id for request_id in request_ids if request_id not in report["request_results"]]
+        if missing:
+            print("Richieste selezionate senza file raccolto:", ", ".join(missing))
 
     if report["files_saved"] == 0:
         raise RuntimeError(
