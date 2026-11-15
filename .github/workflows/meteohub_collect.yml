@@ -36,8 +36,8 @@ jobs:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           VALID_HOUR_UTC: "2026-11-15T12:00:00+00:00"
-          READ_DELAY_MINUTES: "22"
-          REQUEST_ROUND: "3"
+          READ_DELAY_MINUTES: "24"
+          REQUEST_ROUND: "4"
         run: |
           python -u - <<'PY'
           import os
@@ -47,9 +47,7 @@ jobs:
 
           from meteohub_request_all import api, login, utc_string
 
-          networks = (
-              "dpcn-liguria", "dpcn-lombardia", "dpcn-marche", "dpcn-molise",
-          )
+          networks = ("dpcn-marche", "dpcn-molise")
           hour = datetime.fromisoformat(os.environ["VALID_HOUR_UTC"])
           now = datetime.now(timezone.utc)
           target = hour + timedelta(minutes=int(os.environ["READ_DELAY_MINUTES"]))
@@ -65,6 +63,15 @@ jobs:
           previous = api("/api/requests", token)
           if not isinstance(previous, list):
               raise RuntimeError("L'elenco delle richieste MeteoHub non è valido")
+          def submit(token, payload):
+              try:
+                  return api("/api/data", token, payload), token
+              except urllib.error.HTTPError as error:
+                  if error.code != 401:
+                      raise
+                  token = login()
+                  return api("/api/data", token, payload), token
+
           request_ids = []
           for network in networks:
               name = f"enduro-pilota-{hour:%Y%m%dT%H%MZ}-{network}-{os.environ['REQUEST_ROUND']}"
@@ -91,7 +98,7 @@ jobs:
                       "only_reliable": True,
                   }
                   try:
-                      result = api("/api/data", token, payload)
+                      result, token = submit(token, payload)
                   except urllib.error.HTTPError as error:
                       print(f"{network}: invio respinto con HTTP {error.code}")
                       continue
