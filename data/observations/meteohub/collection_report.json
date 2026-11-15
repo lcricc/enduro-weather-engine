@@ -1,0 +1,35 @@
+{
+  "generated_utc": "2026-11-15T08:27:57.843786+00:00",
+  "requests_total": 20,
+  "requests_completed": 17,
+  "files_saved": 15,
+  "records_downloaded": 396624,
+  "requests_skipped": 2,
+  "errors": [
+    {
+      "request_id": 5875748,
+      "reason": "File oltre il limite di 50 MB"
+    },
+    {
+      "request_id": 5871033,
+      "reason": "File oltre il limite di 50 MB"
+    }
+  ],
+  "saved_requests": [
+    5875754,
+    5875753,
+    5875752,
+    5875750,
+    5871031,
+    5871030,
+    5871028,
+    5871026,
+    5871024,
+    5867235,
+    5867234,
+    5867233,
+    5867232,
+    5867231,
+    5867230
+  ]
+}
