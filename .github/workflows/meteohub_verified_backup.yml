@@ -1,0 +1,273 @@
+name: ENDURO MeteoHub Verified Backup
+
+on:
+  push:
+    branches: [meteohub-primo-confronto]
+    paths: [.github/workflows/meteohub_verified_backup.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: enduro-meteohub-originals-20261116
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TAG: meteohub-originali-20261116
+      ASSET: meteohub-originali-20261116.tar.gz
+      TARGET_SHA: 89575287681bf340220de6588f2104b0948f89b6
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Prepare verification code
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/meteohub-backup.py" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          import tarfile
+          from concurrent.futures import ThreadPoolExecutor
+          from pathlib import Path
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import quote, urlencode
+          from urllib.request import Request, urlopen
+
+          from meteohub_collect import BASE_URL, safe_filename
+          from meteohub_request_all import api, login
+
+          CHUNK = 1024 * 1024
+          ROOT = Path(os.environ["RUNNER_TEMP"]) / "meteohub-originals"
+          EXPECTED = {'5882781': 85192, '5882389': 16021, '5879397': 280159, '5879396': 186105, '5879355': 1224841, '5879088': 526799, '5879086': 1416727, '5878886': 3582342, '5878693': 459518, '5878498': 6032, '5878497': 224382, '5878371': 1149625, '5878370': 636976, '5878368': 1748143, '5878367': 1914995, '5877925': 9483211, '5877923': 30478991, '5875754': 19561930, '5875753': 9484500, '5875752': 26260301, '5875750': 30488611, '5875748': 130374617, '5871033': 102079216, '5871031': 9561099, '5871030': 43999044, '5871028': 266542, '5871026': 2251597, '5871024': 3009602, '5867235': 753865, '5867234': 3794785, '5867233': 25908007, '5867232': 12557697, '5867231': 10244829, '5867230': 6816212, '5867229': 14735938, '5863397': 28348490, '5863396': 7495914, '5863394': 13278127, '5863226': 524783, '5863225': 1411870, '5863224': 33446137, '5863223': 54074741, '5863221': 248211638, '5863220': 61925973, '5863219': 117074642, '5848648': 175694, '5848640': 1322120, '5848547': 86683, '5835976': 335082}
+
+
+          def list_requests(token, archived=False):
+              root = "/api/requests?"
+              query = {"archived": str(archived).lower()}
+              total = api(root + urlencode({**query, "get_total": "true"}), token)["total"]
+              items = {}
+              for page_name, size_name in (("page", "size"), ("page", "per_page"), ("currentpage", "perpage")):
+                  for page in range(1, 100):
+                      if len(items) == total:
+                          return items
+                      params = {**query, page_name: page, size_name: 100}
+                      rows = api(root + urlencode(params), token)
+                      if not isinstance(rows, list) or not rows:
+                          break
+                      previous = len(items)
+                      items.update((str(row["id"]), row) for row in rows)
+                      if previous == len(items) and page > 1:
+                          break
+              if len(items) != total:
+                  raise RuntimeError(f"Inventory incomplete: {len(items)} of {total} requests")
+              return items
+
+
+          def copy_file(arguments):
+              identifier, row, token = arguments
+              filename = safe_filename(row["fileoutput"])
+              if not filename or not identifier.isdecimal():
+                  raise ValueError(f"Invalid file reference for request {identifier}")
+              expected_size = EXPECTED[identifier]
+              path = ROOT / "files" / f"request_{identifier}.json"
+              for attempt in range(3):
+                  digest = hashlib.sha256()
+                  count = 0
+                  request = Request(
+                      BASE_URL + "/api/data/" + quote(filename, safe=""),
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/json",
+                          "Accept-Encoding": "identity",
+                      },
+                  )
+                  try:
+                      with urlopen(request, timeout=120) as source, path.open("wb") as destination:
+                          while chunk := source.read(CHUNK):
+                              if not count and not chunk.decode("utf-8-sig", errors="ignore").lstrip().startswith(("{", "[")):
+                                  raise ValueError(f"Missing JSON content for request {identifier}")
+                              destination.write(chunk)
+                              digest.update(chunk)
+                              count += len(chunk)
+                      if count != expected_size:
+                          raise ValueError(f"Incorrect byte count for request {identifier}: {count}/{expected_size}")
+                      print(f"Saved request {identifier}: {count} bytes", flush=True)
+                      return {
+                          "id": identifier,
+                          "path": f"files/{path.name}",
+                          "bytes": count,
+                          "sha256": digest.hexdigest(),
+                          "provider_filename": row["fileoutput"],
+                          "datasets": (row.get("args") or {}).get("dataset_names", []),
+                      }
+                  except (TimeoutError, URLError, OSError, ValueError) as exc:
+                      if attempt == 2:
+                          raise RuntimeError(f"Unable to copy request {identifier}: {type(exc).__name__}") from exc
+                      print(f"Retrying the download of request {identifier}: {type(exc).__name__}", flush=True)
+                      if isinstance(exc, HTTPError) and exc.code == 401:
+                          token = login()
+
+
+          def backup():
+              token = login()
+              items = list_requests(token)
+              selected = []
+              for identifier, expected_size in EXPECTED.items():
+                  row = items.get(identifier)
+                  if not row or row.get("status") != "SUCCESS" or row.get("filesize") != expected_size:
+                      raise RuntimeError(f"Source inventory changed for {identifier}")
+                  if not (row.get("name") or "").lower().startswith("enduro"):
+                      raise RuntimeError(f"Unexpected dataset owner label on request {identifier}")
+                  selected.append((identifier, row, token))
+
+              (ROOT / "files").mkdir(parents=True, exist_ok=True)
+              with ThreadPoolExecutor(max_workers=3) as pool:
+                  files = list(pool.map(copy_file, selected))
+              (ROOT / "manifest.json").write_text(
+                  json.dumps({"files": files}, indent=2), encoding="utf-8"
+              )
+              print(f"Backed up {len(files)} original files, {sum(x['bytes'] for x in files)} bytes.")
+
+
+          def verify(archive_path):
+              with tarfile.open(archive_path, "r|gz") as pack:
+                  members = iter(pack)
+                  first = next(members)
+                  if first.name != "manifest.json" or not first.isfile():
+                      raise RuntimeError("Missing backup manifest")
+                  with pack.extractfile(first) as source:
+                      manifest = json.load(source)
+                  files = manifest["files"]
+                  if len(files) != len(EXPECTED) or {x["id"]: x["bytes"] for x in files} != EXPECTED:
+                      raise RuntimeError("Backup manifest does not match the approved inventory")
+                  pending = {f"files/request_{file['id']}.json": file for file in files}
+                  for member in members:
+                      if member.isdir() and member.name == "files":
+                          continue
+                      file = pending.pop(member.name, None)
+                      if file is None or not member.isfile() or member.size != file["bytes"]:
+                          raise RuntimeError(f"Unexpected or invalid file: {member.name}")
+                      with pack.extractfile(member) as source:
+                          digest = hashlib.sha256()
+                          while chunk := source.read(CHUNK):
+                              digest.update(chunk)
+                      if digest.hexdigest() != file["sha256"]:
+                          raise RuntimeError(f"Checksum mismatch in GitHub backup for {file['id']}")
+                  if pending:
+                      raise RuntimeError(f"Missing {len(pending)} files in GitHub backup")
+              print(f"Verified each original in the downloaded GitHub backup: {len(files)} files.", flush=True)
+              return files
+
+
+          def archive_request(identifier, token):
+              req = Request(
+                  BASE_URL + f"/api/requests/{identifier}",
+                  headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                  method="PUT",
+              )
+              with urlopen(req, timeout=30) as response:
+                  return response.status
+
+
+          def release_space(files):
+              token = login()
+              before = api("/api/usage", token)
+              active = list_requests(token)
+              targets = []
+              for file in files:
+                  identifier = file["id"]
+                  row = active.get(identifier)
+                  if row is None:
+                      continue
+                  if (
+                      row.get("status") != "SUCCESS"
+                      or row.get("fileoutput") != file["provider_filename"]
+                      or row.get("filesize") != file["bytes"]
+                  ):
+                      raise RuntimeError(f"File changed since verified backup: request {identifier}")
+                  targets.append(file)
+              failed = []
+              for file in targets:
+                  identifier = file["id"]
+                  try:
+                      code = archive_request(identifier, token)
+                      print(f"Archived MeteoHub request {identifier}: HTTP {code}", flush=True)
+                  except (HTTPError, URLError, TimeoutError) as error:
+                      print(f"Could not archive {identifier}: {getattr(error, 'code', type(error).__name__)}", flush=True)
+                      failed.append(identifier)
+
+              remaining = list_requests(token)
+              archived = list_requests(token, archived=True)
+              left = sorted(set(EXPECTED) & set(remaining))
+              verified = sorted(set(EXPECTED) & set(archived))
+              after = api("/api/usage", token)
+              print(json.dumps({
+                  "before": before,
+                  "after": after,
+                  "released_bytes": before["used"] - after["used"],
+                  "archived_requests_verified": len(verified),
+                  "remaining_target_requests": left,
+                  "failed_archive_calls": failed,
+                  "active_files_left": sum(bool(row.get("fileoutput")) for row in remaining.values()),
+              }), flush=True)
+              if left or len(verified) != len(EXPECTED) or failed:
+                  raise RuntimeError("MeteoHub cleanup needs a follow-up check")
+
+
+          if sys.argv[1] == "backup":
+              backup()
+          elif sys.argv[1] == "verify":
+              verify(Path(sys.argv[2]))
+          elif sys.argv[1] == "cleanup":
+              release_space(verify(Path(sys.argv[2])))
+          else:
+              raise ValueError("Unknown operation")
+          PY
+      - name: Back up original MeteoHub files to a persistent GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Using the existing release after independent content verification."
+            exit 0
+          fi
+          python "$RUNNER_TEMP/meteohub-backup.py" backup
+          tar -I 'gzip -1' -cf "$ASSET" -C "$RUNNER_TEMP/meteohub-originals" manifest.json files
+          sha256sum "$ASSET" > "$ASSET.sha256"
+          gh release create "$TAG" "$ASSET" "$ASSET.sha256" \
+            --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --latest=false \
+            --title "MeteoHub – originali del progetto al 16 novembre 2026" \
+            --notes "Backup degli export JSON MeteoHub di ENDURO WEATHER ENGINE. L’archivio contiene un manifest con gli ID, le dimensioni e il checksum SHA-256 di ciascun file originale."
+      - name: Download and verify the published GitHub copy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/verify-github"
+          cd "$RUNNER_TEMP/verify-github"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ASSET" --pattern "$ASSET.sha256"
+          sha256sum -c "$ASSET.sha256"
+          python "$RUNNER_TEMP/meteohub-backup.py" verify "$ASSET"
+      - name: Archive the backed-up requests in MeteoHub
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python "$RUNNER_TEMP/meteohub-backup.py" cleanup "$RUNNER_TEMP/verify-github/$ASSET"
