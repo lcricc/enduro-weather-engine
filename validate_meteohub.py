@@ -18,7 +18,7 @@ import gzip
 import json
 import math
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 OBS = Path(
@@ -27,6 +27,8 @@ OBS = Path(
 FC_DIR = Path("data/forecasts/national")
 OUT = Path("data/validation/meteohub")
 APPROVED = Path("meteohub_approved_metadata.json")
+OBSERVATION_TOLERANCE = timedelta(minutes=5)
+EXACT_TIME = timedelta(0)
 
 VARIABLES = {
     "B12101": "temperature_2m_c",
@@ -167,7 +169,14 @@ def convert(value, unit):
     return value
 
 
-def load_observations(approved):
+def closest_hour(measured_at):
+    hour = measured_at.replace(minute=0, second=0, microsecond=0)
+    if measured_at.minute >= 30:
+        hour += timedelta(hours=1)
+    return hour
+
+
+def load_observations(approved, *, time_tolerance=EXACT_TIME):
     observations = defaultdict(list)
     stats = Counter()
 
@@ -235,7 +244,11 @@ def load_observations(approved):
                 or dt.microsecond
             ):
                 stats["non_hourly"] += 1
-                continue
+                if (
+                    not time_tolerance
+                    or abs(dt - closest_hour(dt)) > time_tolerance
+                ):
+                    continue
 
             network = (
                 row.get("network") or ""
@@ -265,12 +278,46 @@ def load_observations(approved):
     for key, values in observations.items():
         if len(values) == 1:
             clean[key] = values[0]
+            measured_at = key[2]
+            if measured_at == closest_hour(measured_at):
+                stats["usable_station_hours"] += 1
+            else:
+                stats["usable_non_hourly_observations"] += 1
         else:
             stats["ambiguous_observations"] += 1
 
-    stats["usable_station_hours"] = len(clean)
+    stats.setdefault("usable_station_hours", 0)
 
     return clean, stats
+
+
+def index_nearby_observations(observations):
+    by_hour = defaultdict(list)
+    for (network, station, measured_at, variable), value in observations.items():
+        hour = closest_hour(measured_at)
+        offset = measured_at - hour
+        if offset:
+            by_hour[(network, station, hour, variable)].append((offset, value))
+    for candidates in by_hour.values():
+        candidates.sort(key=lambda candidate: (abs(candidate[0]), candidate[0]))
+    return by_hour
+
+
+def match_observation(
+    obs_key, issue, now, observations, nearby_observations
+):
+    valid = obs_key[2]
+    if valid > now:
+        return None
+
+    exact = observations.get(obs_key)
+    if exact is not None:
+        return exact, EXACT_TIME
+
+    for offset, value in nearby_observations.get(obs_key, ()):
+        if issue < valid + offset <= now:
+            return value, offset
+    return None
 
 
 def lead_bucket(hours):
@@ -336,7 +383,7 @@ def save_csv(path, metrics):
         writer.writerows(metrics)
 
 
-def validate():
+def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
     OUT.mkdir(
         parents=True,
         exist_ok=True
@@ -360,15 +407,21 @@ def validate():
             "MeteoHub forecasts missing"
         )
 
-    observations, obs_stats = (
-        load_observations(approved)
+    observations, obs_stats = load_observations(
+        approved, time_tolerance=time_tolerance
     )
+    nearby_observations = index_nearby_observations(observations)
 
     now = datetime.now(timezone.utc)
 
     latest_observation = max(
         (key[2] for key in observations),
         default=None
+    )
+
+    latest_exact_observation = max(
+        (key[2] for key in observations if key[2] == closest_hour(key[2])),
+        default=None,
     )
 
     diagnostics = Counter()
@@ -510,7 +563,10 @@ def validate():
                         variable
                     )
 
-                    if obs_key not in observations:
+                    match = match_observation(
+                        obs_key, issue, now, observations, nearby_observations
+                    )
+                    if match is None:
 
                         diagnostics["unmatched"] += 1
 
@@ -557,12 +613,8 @@ def validate():
                         model
                     )
 
-                    candidates[event_key].append(
-                        (
-                            predicted,
-                            observations[obs_key]
-                        )
-                    )
+                    observed, offset = match
+                    candidates[event_key].append((predicted, observed, offset))
 
                     model_diagnostics[model][
                         f"{variable}_matched"
@@ -596,7 +648,10 @@ def validate():
         ] += 1
 
     official_errors = defaultdict(list)
+    exact_time_errors = defaultdict(list)
     preliminary_errors = defaultdict(list)
+    event_offsets = Counter()
+    complete_event_offsets = Counter()
 
     for (
         issue,
@@ -605,6 +660,9 @@ def validate():
     ), models in events.items():
 
         variable = obs_key[3]
+        # All models in the same forecast cycle use the same observation.
+        offset_seconds = next(iter(models.values()))[2].total_seconds()
+        event_offsets[offset_seconds] += 1
 
         diagnostics[
             "events_with_at_least_one_model"
@@ -612,7 +670,8 @@ def validate():
 
         for model, (
             predicted,
-            observed
+            observed,
+            _
         ) in models.items():
 
             preliminary_errors[
@@ -634,17 +693,18 @@ def validate():
         diagnostics[
             "complete_model_events"
         ] += 1
+        complete_event_offsets[offset_seconds] += 1
 
         for model, (
             predicted,
-            observed
+            observed,
+            offset
         ) in models.items():
-
-            official_errors[
-                (model, variable, bucket)
-            ].append(
-                predicted - observed
-            )
+            error = predicted - observed
+            key = (model, variable, bucket)
+            official_errors[key].append(error)
+            if not offset:
+                exact_time_errors[key].append(error)
 
     metrics = calculate_metrics(
         official_errors
@@ -716,10 +776,26 @@ def validate():
         "forecast_models": sorted(all_models),
         "approved_signatures": len(approved),
         "latest_observation_utc": (
-            latest_observation.isoformat()
-            if latest_observation
+            latest_exact_observation.isoformat()
+            if latest_exact_observation
             else None
         ),
+        "observation_matching": {
+            "time_tolerance_seconds": time_tolerance.total_seconds(),
+            "latest_eligible_observation_utc": (
+                latest_observation.isoformat() if latest_observation else None
+            ),
+            "exact_events": event_offsets[0],
+            "events_with_tolerance": sum(event_offsets.values()) - event_offsets[0],
+            "complete_exact_events": complete_event_offsets[0],
+            "complete_events_with_tolerance": (
+                sum(complete_event_offsets.values()) - complete_event_offsets[0]
+            ),
+            "complete_event_offsets_seconds": [
+                {"observation_minus_forecast_seconds": offset, "events": count}
+                for offset, count in sorted(complete_event_offsets.items())
+            ],
+        },
         "observation_diagnostics": dict(
             obs_stats
         ),
@@ -728,6 +804,7 @@ def validate():
         ),
         "model_diagnostics": model_report,
         "metrics": metrics,
+        "exact_time_metrics": calculate_metrics(exact_time_errors),
         "preliminary_metrics": preliminary_metrics,
         "status": (
             "VALIDATED"
@@ -741,7 +818,10 @@ def validate():
         ),
         "limitations": [
             "Only manually approved metadata accepted",
-            "Exact hourly UTC matching required",
+            "Hourly forecasts match the nearest approved station observation "
+            "within the reported tolerance",
+            "Exact observations have priority; equal offsets prefer the earlier observation",
+            "Observation time must follow forecast acquisition",
             "Forecast acquisition is a proxy for issuance",
             "Official metrics require common-eight-model samples",
             "Preliminary metrics may use different samples per model",
