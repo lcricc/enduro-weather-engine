@@ -2,97 +2,76 @@ name: ENDURO MeteoHub Automatic Collection
 
 on:
   push:
-    branches:
-      - meteohub-primo-confronto
-    paths:
-      - .github/workflows/meteohub_collect.yml
+    branches: [meteohub-primo-confronto]
+    paths: [.github/workflows/meteohub_collect.yml]
 
 permissions:
+  actions: read
   contents: read
-
-concurrency:
-  group: enduro-meteohub-precipitation-check
-  cancel-in-progress: false
 
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: 89575287681bf340220de6588f2104b0948f89b6
           persist-credentials: false
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Request the complete hour around the forecast stations
-        id: request
+      - name: Submit the published rain recovery plan
+        id: recovery
         env:
+          GH_TOKEN: ${{ github.token }}
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+          VALIDATION_RUN: "43766027938"
+        shell: bash
         run: |
+          set -euo pipefail
+          gh run download "$VALIDATION_RUN" --name "enduro-validation-$VALIDATION_RUN" --dir "$RUNNER_TEMP/rain-plan"
           python -u - <<'PY'
+          import json
           import os
-          from urllib.error import HTTPError
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import meteohub_rain_recovery as recovery
 
-          from meteohub_request_all import api, login
-
-          # Bounds around the ten stations in each network in forecast archive 43710924892.
-          bounds_by_network = {
-              "dpcn-liguria": {"latmin": 43.79310, "latmax": 44.05220, "lonmin": 7.61868, "lonmax": 9.83614},
-              "dpcn-lombardia": {"latmin": 44.76783, "latmax": 45.47278, "lonmin": 9.09721, "lonmax": 10.82413},
-          }
-          token = login()
-          usage = api("/api/usage", token)
-          if isinstance(usage, dict) and type(usage.get("quota")) is int and type(usage.get("used")) is int:
-              print(f"Spazio libero MeteoHub: {usage['quota'] - usage['used']} byte")
-
-          previous = api("/api/requests", token)
-          if not isinstance(previous, list):
-              raise RuntimeError("Elenco richieste MeteoHub non valido")
+          plan = json.loads((Path(os.environ["RUNNER_TEMP"]) / "rain-plan/rain_recovery_plan.json").read_text())
           identifiers = []
-          for network, bounds in bounds_by_network.items():
-              name = f"enduro-precipitazioni-20261115T1400Z-stazioni-{network}"
-              item = next((item for item in previous if isinstance(item, dict) and item.get("name") == name), None)
-              if item is None:
-                  try:
-                      item = api("/api/data", token, {
-                          "request_name": name,
-                          "dataset_names": [network],
-                          "reftime": {"from": "2026-11-15T12:59:59.000Z", "to": "2026-11-15T14:00:01.000Z"},
-                          "filters": {"bounding_box": bounds},
-                          "output_format": "json",
-                          "only_reliable": True,
-                      })
-                  except HTTPError as error:
-                      print(f"{network}: HTTP {error.code}")
-                      continue
-              identifier = str(item.get("request_id") or item.get("id") or "") if isinstance(item, dict) else ""
-              if identifier.isascii() and identifier.isdecimal():
-                  identifiers.append(identifier)
-                  print(f"{network}: richiesta {identifier}")
-              else:
-                  print(f"{network}: ID richiesta assente")
+          request = recovery.api
 
+          def capture(path, token, payload=None):
+              result = request(path, token, payload)
+              if path == "/api/data":
+                  identifier = str(result.get("request_id") or result.get("id") or "")
+                  if not identifier.isascii() or not identifier.isdecimal():
+                      raise ValueError("MeteoHub did not report a numeric request ID")
+                  identifiers.append(identifier)
+              return result
+
+          recovery.api = capture
+          recovery.submit(plan, datetime.now(timezone.utc))
           if not identifiers:
-              raise RuntimeError("Nessuna richiesta MeteoHub accettata")
+              raise RuntimeError("No new recovery request was submitted")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"ids={','.join(identifiers)}\n")
           PY
 
-      - name: Collect the regional extracts
+      - name: Collect recovered weather observations
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          REQUEST_IDS: ${{ steps.request.outputs.ids }}
+          REQUEST_IDS: ${{ steps.recovery.outputs.ids }}
         run: |
           mkdir -p targeted
           cd targeted
           python "$GITHUB_WORKSPACE/meteohub_collect.py" --request-ids "$REQUEST_IDS" --wait-seconds 240
 
-      - name: Clean and deduplicate observations
+      - name: Clean weather observations
         working-directory: targeted
         run: python "$GITHUB_WORKSPACE/meteohub_clean.py"
 
@@ -102,13 +81,4 @@ jobs:
           name: meteohub-observations-${{ github.run_id }}
           path: targeted/data/observations/meteohub/
           if-no-files-found: error
-          retention-days: 90
-
-      - name: Archive request statuses on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: meteohub-request-status-${{ github.run_id }}
-          path: targeted/data/observations/meteohub/collection_report.json
-          if-no-files-found: ignore
           retention-days: 90
