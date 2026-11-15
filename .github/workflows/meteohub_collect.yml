@@ -11,13 +11,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: enduro-meteohub-collection
+  group: enduro-meteohub-precipitation-check
   cancel-in-progress: false
 
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
@@ -28,13 +28,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Wait for quota and request the pilot hour
+      - name: Request observations for the complete precipitation hour
         id: request
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          VALID_HOUR_UTC: "2026-11-15T12:00:00+00:00"
-          DEADLINE_UTC: "2026-11-15T13:17:00+00:00"
+          VALID_HOUR_UTC: "2026-11-15T13:00:00+00:00"
+          EARLIEST_REQUEST_UTC: "2026-11-15T13:40:00+00:00"
+          DEADLINE_UTC: "2026-11-15T13:50:00+00:00"
         run: |
           python -u - <<'PY'
           import os
@@ -53,7 +54,11 @@ jobs:
           def request_observations():
               hour = datetime.fromisoformat(os.environ["VALID_HOUR_UTC"])
               deadline = datetime.fromisoformat(os.environ["DEADLINE_UTC"])
-              name = f"enduro-pilota-{hour:%Y%m%dT%H%MZ}-quattro-reti"
+              name = f"enduro-precipitazioni-{hour:%Y%m%dT%H%MZ}-quattro-reti"
+              earliest = datetime.fromisoformat(os.environ["EARLIEST_REQUEST_UTC"])
+              print(f"Finestra di misura fino alle {hour.isoformat()}. Controllo alle {earliest.isoformat()}.")
+              while (seconds := (earliest - datetime.now(timezone.utc)).total_seconds()) > 0:
+                  time.sleep(min(45, seconds))
               token = login()
               previous = api("/api/requests", token)
               if not isinstance(previous, list):
@@ -75,8 +80,8 @@ jobs:
                       "dpcn-liguria", "dpcn-lombardia", "dpcn-marche", "dpcn-molise",
                   ],
                   "reftime": {
-                      "from": utc_string(hour - timedelta(minutes=2)),
-                      "to": utc_string(hour + timedelta(minutes=4)),
+                      "from": utc_string(hour - timedelta(hours=1, seconds=1)),
+                      "to": utc_string(hour + timedelta(seconds=1)),
                   },
                   "output_format": "json",
                   "only_reliable": True,
