@@ -15,8 +15,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+import meteohub_rain_recovery
 from meteohub_collect import BASE_URL, safe_filename
 from meteohub_request_all import api, login, utc_string
+from validate_meteohub import load_approved, signature
 
 OBSERVATIONS = Path("data/observations/meteohub")
 VARIABLES = ("B13011", "B12101", "B11002")
@@ -52,11 +54,7 @@ def error_text(error):
 
 def submit(token, end, hours):
     active = request_list(token)
-    known_names = {
-        row.get("name"): row
-        for row in (*active, *request_list(token, archived=True))
-        if row.get("name")
-    }
+    archived = request_list(token, archived=True)
     available = {
         row["id"] for row in api("/api/datasets", token) if row.get("category") == "OBS"
     }
@@ -68,9 +66,16 @@ def submit(token, end, hours):
         missing = sorted(set(networks) - available)
         if missing:
             print(f"{label}: datasets unavailable {missing}", flush=True)
-        name = f"{PREFIX}{end:%Y%m%dT%H%MZ}-{hours}h-{label}"
-        if not present or name in known_names:
+        stem = f"{PREFIX}{end:%Y%m%dT%H%MZ}-{hours}h-{label}"
+        if not present:
             continue
+        matches = [
+            row for row in (*active, *archived)
+            if row.get("name") == stem or (row.get("name") or "").startswith(stem + "--retry-")
+        ]
+        if any(row.get("status") not in {"FAILURE", "REVOKED"} for row in matches):
+            continue
+        name = f"{stem}--retry-{len(matches)}" if matches else stem
         if quota <= 0:
             print(f"{label}: delayed by MeteoHub hourly quota", flush=True)
             continue
@@ -124,7 +129,28 @@ def select_results(token, ids, wait):
         time.sleep(10)
 
 
-def fetch_file(row, token):
+def normalize_record(record, approved):
+    retained = []
+    has_measurement = False
+    for group in record["data"]:
+        if not isinstance(group, dict) or not isinstance(group.get("vars"), dict):
+            continue
+        if "timerange" not in group:
+            retained.append(group)
+            continue
+        variables = {
+            code: entry for code, entry in group["vars"].items()
+            if signature(code, group.get("level"), group["timerange"]) in approved
+        }
+        if variables:
+            retained.append({**group, "vars": variables})
+            has_measurement = True
+    if has_measurement:
+        return {**record, "data": retained}
+    return None
+
+
+def fetch_file(row, token, approved):
     identifier = str(row["id"])
     filename = safe_filename(row["fileoutput"])
     if not identifier.isdecimal() or not filename:
@@ -159,7 +185,9 @@ def fetch_file(row, token):
                 if not isinstance(record, dict) or not isinstance(record.get("data"), list):
                     raise ValueError(f"Invalid observation in request {identifier}")
                 networks.add(record["network"])
-                out.write(json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n")
+                accepted = normalize_record(record, approved)
+                if accepted is not None:
+                    out.write(json.dumps(accepted, separators=(",", ":"), ensure_ascii=False) + "\n")
                 records += 1
         if not records:
             raise ValueError(f"No measurements in request {identifier}")
@@ -246,11 +274,14 @@ def free_verified_files(token, files):
             print(f"Cannot release MeteoHub file {identifier}: {type(error).__name__}", flush=True)
     after = api("/api/usage", token)
     live_ids = {str(row["id"]) for row in request_list(token) if row.get("fileoutput")}
+    remaining = set(failed) | ({item["id"] for item in files} & live_ids)
     print(json.dumps({
         "archived_requests": [identifier for identifier in removed if identifier not in live_ids],
-        "files_not_removed": sorted(set(failed) | ({item["id"] for item in files} & live_ids)),
+        "files_not_removed": sorted(remaining),
         "bytes_freed": before - after["used"], "meteohub_disk": after,
     }), flush=True)
+    if remaining:
+        raise RuntimeError("Some verified files still occupy MeteoHub storage")
 
 
 def collect(args):
@@ -269,15 +300,24 @@ def collect(args):
     if not ids:
         now = datetime.now(timezone.utc) - timedelta(minutes=45)
         end = datetime.fromisoformat(args.end) if args.end else now.replace(hour=now.hour // 3 * 3, minute=0, second=0, microsecond=0)
+        if end.utcoffset() != timedelta(0) or end > now:
+            raise ValueError("Observation window must end in UTC after the publication delay")
         submit(token, end, args.hours)
+        plan = work / "rain-recovery" / "rain_recovery_plan.json"
+        if plan.is_file():
+            try:
+                meteohub_rain_recovery.submit(json.loads(plan.read_text()), datetime.now(timezone.utc))
+            except (OSError, ValueError, RuntimeError, KeyError) as error:
+                print(f"Rain-gap requests deferred: {type(error).__name__}", flush=True)
     ready = select_results(token, ids, 240)
     if not ready:
         raise RuntimeError("No completed MeteoHub result available to archive")
     (OBSERVATIONS / "originals").mkdir(parents=True, exist_ok=True)
     files = []
+    approved = load_approved()
     for row in ready:
         try:
-            files.append(fetch_file(row, token))
+            files.append(fetch_file(row, token, approved))
         except (OSError, ValueError) as error:
             print(f"File {row['id']} retained in MeteoHub: {error}", flush=True)
             (OBSERVATIONS / "originals" / f"request_{row['id']}.json").unlink(missing_ok=True)
@@ -285,6 +325,10 @@ def collect(args):
     if not files:
         raise RuntimeError("No source file was copied successfully")
     subprocess.run(["python", "meteohub_clean.py"], check=True)
+    clean = OBSERVATIONS / "clean" / "observations_clean.csv"
+    with clean.open("rb") as observations:
+        if not observations.readline() or not observations.readline():
+            raise RuntimeError("No cleaned measurements are available for validation")
     for path in OBSERVATIONS.glob("request_*.jsonl"):
         path.unlink()
     (OBSERVATIONS / "backup_manifest.json").write_text(json.dumps(files, indent=2), encoding="utf-8")

@@ -9,11 +9,6 @@ on:
         type: string
   schedule:
     - cron: "50 */3 * * *"
-  push:
-    branches: [meteohub-ciclo-nazionale]
-    paths:
-      - .github/workflows/meteohub_collect.yml
-      - meteohub_national_cycle.py
 
 permissions:
   contents: write
@@ -35,7 +30,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Download the latest rain-gap plan
-        if: ${{ !inputs.request_ids && github.event_name != 'push' }}
+        if: ${{ !inputs.request_ids }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,10 +49,9 @@ jobs:
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           REQUEST_IDS: ${{ inputs.request_ids }}
         shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
-            python meteohub_national_cycle.py --end 2026-11-15T15:00:00+00:00 --hours 1
-          else
-            python meteohub_national_cycle.py --request-ids "$REQUEST_IDS"
-          fi
+        run: python meteohub_national_cycle.py --request-ids "$REQUEST_IDS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-observations-${{ github.run_id }}
+          path: data/observations/meteohub/clean/observations_clean.csv
+          if-no-files-found: ignore
