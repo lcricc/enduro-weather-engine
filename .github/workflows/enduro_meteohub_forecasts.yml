@@ -3,6 +3,16 @@ name: ENDURO MeteoHub Forecasts V2
 
 on:
   workflow_dispatch:
+    inputs:
+      regional_observation_run:
+        description: "ID raccolta MeteoHub per includere le stazioni di Liguria, Lombardia, Marche e Molise"
+        required: false
+        type: string
+  push:
+    branches:
+      - meteohub-stazioni-regionali
+    paths:
+      - .github/workflows/enduro_meteohub_forecasts.yml
   schedule:
     - cron: "15 4 * * *"
 
@@ -79,6 +89,88 @@ jobs:
 
           echo "Stations available:"
           wc -l data/observations/meteohub/stations_meteohub.csv
+
+      - name: Add regional stations with hourly observations
+        if: ${{ inputs.regional_observation_run || github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.regional_observation_run || '43706641016' }}
+          ONLY_REGIONAL_STATIONS: ${{ github.event_name == 'push' }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "Indicare l'ID numerico di una raccolta MeteoHub"
+            exit 1
+          fi
+
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'meteohub-observations-*' \
+            --dir regional-observations
+
+          FOUND=$(find regional-observations -type f -name observations_clean.csv -print -quit)
+          if [[ -z "$FOUND" ]]; then
+            echo "La raccolta selezionata è priva di osservazioni pulite"
+            exit 1
+          fi
+
+          DIR=data/observations/meteohub
+          mkdir -p "$DIR/clean"
+          cp "$FOUND" "$DIR/clean/observations_clean.csv"
+          cp "$DIR/stations_meteohub.csv" "$DIR/stations_original.csv"
+          python prepare_meteohub_stations.py
+
+          python - <<'PY'
+          import csv
+          import os
+          from collections import Counter, defaultdict
+          from datetime import timedelta
+
+          from prepare_meteohub_stations import FIELDS, OUTPUT
+          from validate_meteohub import VARIABLES, load_approved, load_observations
+
+          networks = ("dpcn-liguria", "dpcn-lombardia", "dpcn-marche", "dpcn-molise")
+          per_network = 10
+
+          with OUTPUT.open(encoding="utf-8-sig", newline="") as source:
+              candidates = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
+          with OUTPUT.with_name("stations_original.csv").open(encoding="utf-8-sig", newline="") as source:
+              stations = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
+          if os.environ["ONLY_REGIONAL_STATIONS"] == "true":
+              stations.clear()
+
+          observations, _ = load_observations(load_approved())
+          latest = {}
+          for network, station_id, timestamp, _ in observations:
+              if network in networks and (network, station_id) in candidates:
+                  latest[network] = max(timestamp, latest.get(network, timestamp))
+
+          counts = defaultdict(Counter)
+          for network, station_id, timestamp, variable in observations:
+              if network in latest and timestamp > latest[network] - timedelta(hours=24):
+                  key = (network, station_id)
+                  if key in candidates:
+                      counts[key][variable] += 1
+
+          def rank(key):
+              samples = [counts[key][variable] for variable in VARIABLES.values()]
+              return -min(samples), -sum(samples), key[1]
+
+          for network in networks:
+              ranked = sorted((key for key in counts if key[0] == network), key=rank)
+              if not ranked:
+                  raise RuntimeError(f"Nessuna stazione oraria verificabile per {network}")
+              chosen = ranked[:per_network]
+              for key in chosen:
+                  stations.setdefault(key, candidates[key])
+              print(f"{network}: {len(chosen)} stazioni selezionate su {len(ranked)} idonee")
+
+          with OUTPUT.open("w", encoding="utf-8", newline="") as destination:
+              writer = csv.DictWriter(destination, fieldnames=FIELDS, extrasaction="ignore")
+              writer.writeheader()
+              writer.writerows(stations.values())
+          print(f"Stazioni per la raccolta previsioni: {len(stations)}")
+          PY
 
       - name: Collect forecasts from eight models
         run: python collect_meteohub_forecasts.py
