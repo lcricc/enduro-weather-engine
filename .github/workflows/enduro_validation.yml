@@ -3,6 +3,12 @@ name: ENDURO MeteoHub Scientific Validation
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/enduro_validation.yml
+      - validate_meteohub.py
+      - meteohub_rain_recovery.py
   workflow_run:
     workflows:
       - ENDURO Permanent Archive
@@ -19,7 +25,7 @@ concurrency:
 
 jobs:
   validate:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -205,6 +211,24 @@ jobs:
 
           echo "Historical forecast files: $COUNT"
           test "$COUNT" -gt 0
+
+      - name: Load the preceding rain recovery plan
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=$(gh run list --workflow enduro_validation.yml --branch main \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          [ -n "$run_id" ] || exit 0
+          gh run download "$run_id" --name "enduro-validation-$run_id" \
+            --dir "$RUNNER_TEMP/previous-rain-recovery"
+          plan="$RUNNER_TEMP/previous-rain-recovery/rain_recovery_plan.json"
+          if [ -f "$plan" ]; then
+            mkdir -p data/validation/previous_rain_recovery
+            cp "$plan" data/validation/previous_rain_recovery/
+          fi
 
       - name: Run scientific validation
         run: python validate_meteohub.py

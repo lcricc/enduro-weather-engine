@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: enduro-meteohub-collection
@@ -38,6 +39,26 @@ jobs:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
         run: python meteohub_request_all.py
+
+      - name: Request missing rain intervals
+        if: ${{ !inputs.request_ids }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=$(gh run list --workflow enduro_validation.yml --branch main \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          [ -n "$run_id" ] || exit 0
+          gh run download "$run_id" --name "enduro-validation-$run_id" \
+            --dir "$RUNNER_TEMP/rain-recovery"
+          plan="$RUNNER_TEMP/rain-recovery/rain_recovery_plan.json"
+          if [ -f "$plan" ]; then
+            python meteohub_rain_recovery.py "$plan"
+          fi
 
       - name: Collect completed MeteoHub observations
         env:

@@ -21,6 +21,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from meteohub_rain_recovery import LOOKBACK, PUBLICATION_DELAY, missing_ends, recovery_plan
+
 OBS = Path(
     "data/observations/meteohub/clean/observations_clean.csv"
 )
@@ -260,7 +262,8 @@ def hourly_precipitation(intervals_by_hour, stats):
 
 
 def load_observations(
-    approved, *, time_tolerance=EXACT_TIME, include_precipitation=False
+    approved, *, time_tolerance=EXACT_TIME, include_precipitation=False,
+    recovery_gaps=None, now=None
 ):
     observations = defaultdict(list)
     precipitation_intervals = defaultdict(dict)
@@ -383,7 +386,15 @@ def load_observations(
 
     stats.setdefault("usable_station_hours", 0)
     if include_precipitation:
-        clean.update(hourly_precipitation(precipitation_intervals, stats))
+        rain = hourly_precipitation(precipitation_intervals, stats)
+        clean.update(rain)
+        if recovery_gaps is not None:
+            for key, intervals in precipitation_intervals.items():
+                if key in rain or not now - LOOKBACK <= key[2] <= now - PUBLICATION_DELAY:
+                    continue
+                ends = missing_ends(key[2], intervals)
+                if ends:
+                    recovery_gaps[key] = ends
 
     return clean, stats
 
@@ -480,7 +491,7 @@ def save_csv(path, metrics):
         writer.writerows(metrics)
 
 
-def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
+def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
     OUT.mkdir(
         parents=True,
         exist_ok=True
@@ -504,12 +515,13 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
             "MeteoHub forecasts missing"
         )
 
+    now = now or datetime.now(timezone.utc)
+    gaps = {}
     observations, obs_stats = load_observations(
-        approved, time_tolerance=time_tolerance, include_precipitation=True
+        approved, time_tolerance=time_tolerance, include_precipitation=True,
+        recovery_gaps=gaps, now=now
     )
     nearby_observations = index_nearby_observations(observations)
-
-    now = datetime.now(timezone.utc)
 
     latest_observation = max(
         (key[2] for key in observations),
@@ -525,6 +537,9 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         complete_precipitation_events=0, complete_wet_precipitation_events=0
     )
     candidates = defaultdict(list)
+    gap_forecasts = defaultdict(Counter)
+    gap_coordinates = {}
+    verified_rain_stations = set()
 
     # Exactly eight models are required.
     all_models = set(OFFICIAL_MODELS)
@@ -672,6 +687,16 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
                         variable
                     )
 
+                    if obs_key in gaps:
+                        gap_forecasts[(issue, obs_key)][model] += 1
+                        latitude = number(row.get("latitude"))
+                        longitude = number(row.get("longitude"))
+                        if (
+                            latitude is not None and -90 <= latitude <= 90
+                            and longitude is not None and -180 <= longitude <= 180
+                        ):
+                            gap_coordinates.setdefault(obs_key, (latitude, longitude))
+
                     match = match_observation(
                         obs_key, issue, now, observations, nearby_observations
                     )
@@ -806,6 +831,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         complete_event_offsets[offset_seconds] += 1
         if variable == PRECIPITATION_VARIABLE:
             diagnostics["complete_precipitation_events"] += 1
+            verified_rain_stations.add(obs_key[:2])
             if measured > 0:
                 diagnostics["complete_wet_precipitation_events"] += 1
 
@@ -822,6 +848,23 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
 
     metrics = calculate_metrics(
         official_errors
+    )
+
+    plan = recovery_plan(
+        gaps, gap_forecasts, gap_coordinates, verified_rain_stations, all_models
+    )
+    plan["generated_utc"] = now.isoformat()
+    previous_plan = OUT.parent / "previous_rain_recovery" / "rain_recovery_plan.json"
+    previous_hours = []
+    if previous_plan.is_file():
+        previous_hours = json.loads(previous_plan.read_text(encoding="utf-8"))["station_hours"]
+    completed_hours = sum(
+        (item["network"], item["station_id"], timestamp(item["hour_end_utc"]), PRECIPITATION_VARIABLE)
+        in observations
+        for item in previous_hours
+    )
+    (OUT / "rain_recovery_plan.json").write_text(
+        json.dumps(plan, indent=2), encoding="utf-8"
     )
 
     preliminary_metrics = calculate_metrics(
@@ -889,6 +932,11 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         "forecast_files": len(forecast_files),
         "forecast_models": sorted(all_models),
         "approved_signatures": len(approved),
+        "rain_recovery": {
+            "pending_station_hours": len(plan["station_hours"]),
+            "target_windows": len(plan["requests"]),
+            "previous_plan_hours_now_complete": completed_hours
+        },
         "latest_observation_utc": (
             latest_exact_observation.isoformat()
             if latest_exact_observation
