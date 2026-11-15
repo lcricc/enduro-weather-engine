@@ -33,6 +33,7 @@ MODELS = [
 VARIABLES = [
     "temperature_2m_c",
     "wind_speed_10m_kmh",
+    "precipitation_mm",
 ]
 
 BUCKETS = [
@@ -268,7 +269,7 @@ def analyze():
             "Le soglie dei campioni sono operative e provvisorie.",
             "La dimensione del campione non garantisce indipendenza statistica.",
             "Non sono ancora disponibili intervalli di confidenza.",
-            "La precipitazione richiede validazione BUFR dedicata.",
+            "La precipitazione confronta gli accumuli sullo stesso intervallo orario.",
             "Nessun peso del modello viene calcolato.",
             "La verifica per quota e orografia non è ancora attiva.",
         ],

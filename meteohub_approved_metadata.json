@@ -11,5 +11,47 @@
     "level": [103, 10000, null, null],
     "timerange": [254, 0, 0],
     "unit": "m/s"
+  },
+  {
+    "code": "B13011",
+    "level": [1, null, null, null],
+    "timerange": [1, 0, 60],
+    "unit": "kg/m2"
+  },
+  {
+    "code": "B13011",
+    "level": [1, null, null, null],
+    "timerange": [1, 0, 180],
+    "unit": "kg/m2"
+  },
+  {
+    "code": "B13011",
+    "level": [1, null, null, null],
+    "timerange": [1, 0, 300],
+    "unit": "kg/m2"
+  },
+  {
+    "code": "B13011",
+    "level": [1, null, null, null],
+    "timerange": [1, 0, 600],
+    "unit": "kg/m2"
+  },
+  {
+    "code": "B13011",
+    "level": [1, null, null, null],
+    "timerange": [1, 0, 900],
+    "unit": "kg/m2"
+  },
+  {
+    "code": "B13011",
+    "level": [1, null, null, null],
+    "timerange": [1, 0, 1800],
+    "unit": "kg/m2"
+  },
+  {
+    "code": "B13011",
+    "level": [1, null, null, null],
+    "timerange": [1, 0, 3600],
+    "unit": "kg/m2"
   }
 ]

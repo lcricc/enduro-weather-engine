@@ -29,11 +29,16 @@ OUT = Path("data/validation/meteohub")
 APPROVED = Path("meteohub_approved_metadata.json")
 OBSERVATION_TOLERANCE = timedelta(minutes=30)
 EXACT_TIME = timedelta(0)
+HOUR = timedelta(hours=1)
+PRECIPITATION_CODE = "B13011"
+PRECIPITATION_VARIABLE = "precipitation_mm"
+PRECIPITATION_UNITS = ("kg/m2", "kg/m**2", "kg/m^2", "kg/m²", "mm")
 
 VARIABLES = {
     "B12101": "temperature_2m_c",
     "B11002": "wind_speed_10m_kmh",
 }
+FORECAST_VARIABLES = (*VARIABLES.values(), PRECIPITATION_VARIABLE)
 
 OFFICIAL_MODELS = {
     "ecmwf_ifs025",
@@ -117,7 +122,7 @@ def load_approved():
         code = item.get("code")
         unit = item.get("unit")
 
-        if code not in VARIABLES:
+        if code not in VARIABLES and code != PRECIPITATION_CODE:
             raise ValueError(
                 f"Unsupported BUFR code: {code}"
             )
@@ -146,6 +151,16 @@ def load_approved():
             raise ValueError(
                 "BUFR timerange must be an array"
             )
+
+        if code == PRECIPITATION_CODE and (
+            unit not in PRECIPITATION_UNITS
+            or level != [1, None, None, None]
+            or len(timerange) != 3
+            or timerange[:2] != [1, 0]
+            or type(timerange[2]) is not int
+            or not 0 < timerange[2] <= HOUR.total_seconds()
+        ):
+            raise ValueError("Invalid BUFR surface precipitation accumulation")
 
         key = signature(
             code, level, timerange
@@ -177,8 +192,78 @@ def closest_hour(measured_at):
     return hour
 
 
-def load_observations(approved, *, time_tolerance=EXACT_TIME):
+def add_precipitation_interval(
+    intervals_by_hour, network, station, end, seconds, value, stats
+):
+    if value < 0:
+        stats["negative_precipitation_observations"] += 1
+        return
+
+    hour_end = end.replace(minute=0, second=0, microsecond=0)
+    if end > hour_end:
+        hour_end += HOUR
+    start = end - timedelta(seconds=seconds)
+    if start < hour_end - HOUR:
+        stats["precipitation_intervals_crossing_hour"] += 1
+        return
+
+    key = (network, station, hour_end, PRECIPITATION_VARIABLE)
+    intervals = intervals_by_hour[key]
+    bounds = (start, end)
+    if bounds not in intervals:
+        intervals[bounds] = value
+    elif intervals[bounds] is not None and intervals[bounds] != value:
+        intervals[bounds] = None
+        stats["conflicting_precipitation_intervals"] += 1
+
+
+def hourly_precipitation(intervals_by_hour, stats):
+    observations = {}
+    for key, intervals in intervals_by_hour.items():
+        end = key[2]
+        start = end - HOUR
+        measured_hour = intervals.get((start, end))
+        if measured_hour is not None:
+            observations[key] = measured_hour
+            stats["direct_precipitation_hours"] += 1
+            continue
+
+        # A complete path uses adjoining intervals from start to end.
+        # Track the two extremes to detect disagreement between complete paths.
+        totals = {start: (0.0, 0.0)}
+        for (segment_start, segment_end), value in sorted(intervals.items()):
+            if value is None or segment_start not in totals:
+                continue
+            lower, upper = totals[segment_start]
+            candidate_min, candidate_max = lower + value, upper + value
+            old_min, old_max = totals.get(
+                segment_end, (candidate_min, candidate_max)
+            )
+            totals[segment_end] = (
+                min(old_min, candidate_min), max(old_max, candidate_max)
+            )
+
+        if end not in totals:
+            stats["incomplete_precipitation_hours"] += 1
+            continue
+        lower, upper = totals[end]
+        if not math.isfinite(upper) or not math.isclose(
+            lower, upper, rel_tol=0, abs_tol=1e-8
+        ):
+            stats["ambiguous_precipitation_hours"] += 1
+            continue
+        observations[key] = lower
+        stats["reconstructed_precipitation_hours"] += 1
+
+    stats["usable_precipitation_station_hours"] = len(observations)
+    return observations
+
+
+def load_observations(
+    approved, *, time_tolerance=EXACT_TIME, include_precipitation=False
+):
     observations = defaultdict(list)
+    precipitation_intervals = defaultdict(dict)
     stats = Counter()
 
     with OBS.open(
@@ -193,7 +278,8 @@ def load_observations(approved, *, time_tolerance=EXACT_TIME):
                 row.get("variable") or ""
             ).strip()
 
-            if code not in VARIABLES:
+            is_precipitation = include_precipitation and code == PRECIPITATION_CODE
+            if code not in VARIABLES and not is_precipitation:
                 continue
 
             try:
@@ -221,12 +307,13 @@ def load_observations(approved, *, time_tolerance=EXACT_TIME):
                 row.get("unit") or ""
             ).strip()
 
-            if (
-                observed_unit
-                and observed_unit != unit
-            ):
-                stats["unit_conflicts"] += 1
-                continue
+            if observed_unit and observed_unit != unit:
+                if (
+                    not is_precipitation
+                    or observed_unit.lower() not in PRECIPITATION_UNITS
+                ):
+                    stats["unit_conflicts"] += 1
+                    continue
 
             dt = timestamp(
                 row.get("time_utc")
@@ -239,7 +326,7 @@ def load_observations(approved, *, time_tolerance=EXACT_TIME):
                 stats["invalid_values"] += 1
                 continue
 
-            if (
+            if not is_precipitation and (
                 dt.minute
                 or dt.second
                 or dt.microsecond
@@ -261,6 +348,13 @@ def load_observations(approved, *, time_tolerance=EXACT_TIME):
 
             if not network or not station:
                 stats["missing_station"] += 1
+                continue
+
+            if is_precipitation:
+                add_precipitation_interval(
+                    precipitation_intervals, network, station, dt,
+                    timerange[2], value, stats
+                )
                 continue
 
             obs_key = (
@@ -288,6 +382,8 @@ def load_observations(approved, *, time_tolerance=EXACT_TIME):
             stats["ambiguous_observations"] += 1
 
     stats.setdefault("usable_station_hours", 0)
+    if include_precipitation:
+        clean.update(hourly_precipitation(precipitation_intervals, stats))
 
     return clean, stats
 
@@ -409,7 +505,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         )
 
     observations, obs_stats = load_observations(
-        approved, time_tolerance=time_tolerance
+        approved, time_tolerance=time_tolerance, include_precipitation=True
     )
     nearby_observations = index_nearby_observations(observations)
 
@@ -425,7 +521,9 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         default=None,
     )
 
-    diagnostics = Counter()
+    diagnostics = Counter(
+        complete_precipitation_events=0, complete_wet_precipitation_events=0
+    )
     candidates = defaultdict(list)
 
     # Exactly eight models are required.
@@ -537,13 +635,15 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
                     ] += 1
                     continue
 
-                for variable in VARIABLES.values():
+                for variable in FORECAST_VARIABLES:
 
                     predicted = number(
                         row.get(variable)
                     )
 
-                    if predicted is None:
+                    if predicted is None or (
+                        variable == PRECIPITATION_VARIABLE and predicted < 0
+                    ):
                         diagnostics[
                             "missing_prediction_value"
                         ] += 1
@@ -551,6 +651,14 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
                         model_diagnostics[model][
                             f"{variable}_missing"
                         ] += 1
+                        continue
+
+                    if (
+                        variable == PRECIPITATION_VARIABLE
+                        and issue > valid - HOUR
+                    ):
+                        diagnostics["precipitation_already_started"] += 1
+                        model_diagnostics[model]["precipitation_already_started"] += 1
                         continue
 
                     model_diagnostics[model][
@@ -662,7 +770,8 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
 
         variable = obs_key[3]
         # All models in the same forecast cycle use the same observation.
-        offset_seconds = next(iter(models.values()))[2].total_seconds()
+        _, measured, offset = next(iter(models.values()))
+        offset_seconds = offset.total_seconds()
         event_offsets[offset_seconds] += 1
 
         diagnostics[
@@ -695,6 +804,10 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
             "complete_model_events"
         ] += 1
         complete_event_offsets[offset_seconds] += 1
+        if variable == PRECIPITATION_VARIABLE:
+            diagnostics["complete_precipitation_events"] += 1
+            if measured > 0:
+                diagnostics["complete_wet_precipitation_events"] += 1
 
         for model, (
             predicted,
@@ -783,6 +896,8 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         ),
         "observation_matching": {
             "time_tolerance_seconds": time_tolerance.total_seconds(),
+            "precipitation_accumulation_seconds": int(HOUR.total_seconds()),
+            "precipitation_time_tolerance_seconds": 0,
             "half_hour_assignment": "following_hour",
             "latest_eligible_observation_utc": (
                 latest_observation.isoformat() if latest_observation else None
@@ -824,7 +939,8 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         ),
         "limitations": [
             "Only manually approved metadata accepted",
-            "Hourly forecasts match the nearest approved station observation "
+            "Hourly temperature and wind forecasts match the nearest approved "
+            "station observation "
             "within the reported tolerance",
             "Exact observations have priority",
             "A half-hour observation belongs to the following hour",
@@ -835,7 +951,8 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
             "Preliminary metrics may use different samples per model",
             "Preliminary metrics are not official model rankings",
             "Legacy ECMWF AIFS rows excluded from calculations",
-            "Precipitation excluded pending BUFR review",
+            "Precipitation uses exact hourly totals in millimetres of water equivalent",
+            "Precipitation forecasts must be acquired by the start of the accumulation hour",
             "Zero metrics does not establish accuracy",
         ],
     }
