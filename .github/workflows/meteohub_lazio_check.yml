@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Check extraction quota and request a small Lazio sample
+      - name: Reproduce the original request and report its response
         id: request
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
@@ -66,34 +66,20 @@ jobs:
           print(f"Spazio MeteoHub disponibile: {free} byte su {usage['quota']}. Richieste residue: {quota['remaining']}.")
 
           start, end = "2026-11-14 17:32:46", "2026-11-15 19:32:46"
-          for network in ("mnw", "dpcn-lazio"):
-              fields(network, start, end, token)
-
-          try_start, try_end = "2026-11-15 12:00:01", "2026-11-15 13:00:01"
-          bbox = {"latmin": 42.50, "latmax": 42.82, "lonmin": 12.98, "lonmax": 13.33}
-          ids = []
-          attempts = min(2, quota["remaining"])
-          for network in ("dpcn-lazio", "mnw"):
-              estimate = fields(network, try_start, try_end, token, rain=True, bbox=bbox)
-              if not estimate or not estimate.get("c") or attempts <= 0:
-                  continue
-              if estimate.get("s", 0) * 2.8 >= free:
-                  print(f"Campione {network}: stima superiore allo spazio disponibile.")
-                  continue
-              attempts -= 1
+          estimate = fields("mnw", start, end, token)
+          if estimate and estimate.get("s", 0) * 2.8 > 5 * free and quota["remaining"] > 0:
               answer = checked("/api/data", token, {
-                  "request_name": f"enduro-lazio-diagnosi-20261115-{network}",
-                  "dataset_names": [network],
-                  "reftime": {"from": "2026-11-15T12:00:01.000Z", "to": "2026-11-15T13:00:01.000Z"},
-                  "filters": {"product": [{"code": "B13011"}], "bounding_box": bbox},
+                  "request_name": "enduro-check-mnw-replay-20261115",
+                  "dataset_names": ["mnw"],
+                  "reftime": {"from": "2026-11-14T17:32:46.000Z", "to": "2026-11-15T19:32:46.000Z"},
                   "output_format": "json",
                   "only_reliable": True,
-              }, label=f"Richiesta mirata {network}")
-              if isinstance(answer, dict):
-                  ident = str(answer.get("request_id") or answer.get("id") or "")
-                  if ident.isascii() and ident.isdecimal():
-                      print(f"Richiesta mirata {network}: ID {ident}")
-                      ids.append(ident)
+              }, label="Ripetizione richiesta ordinaria mnw")
+              if answer is not None:
+                  print(f"Ripetizione richiesta ordinaria mnw accettata: {answer.get('request_id')}")
+          else:
+              print("Ripetizione richiesta ordinaria mnw: stima o quota indisponibile.")
+          ids = ["5882781"]
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
               print("ids=" + ",".join(ids), file=stream)
           PY
@@ -103,6 +89,7 @@ jobs:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           REQUEST_IDS: ${{ steps.request.outputs.ids }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           mkdir -p targeted
           cd targeted
@@ -118,6 +105,29 @@ jobs:
           stations = {(row["network"], row["station_id"], row["station_name"]) for row in rain}
           print("Misure pioggia per rete:", dict(Counter(r["network"] for r in rain)))
           print("Stazioni pioggia:", sorted(stations))
+          from validate_meteohub import load_approved, add_precipitation_interval, hourly_precipitation, signature, timestamp
+          from collections import defaultdict
+          import json
+
+          import os
+          import validate_meteohub
+          validate_meteohub.APPROVED = Path(os.environ["GITHUB_WORKSPACE"]) / "meteohub_approved_metadata.json"
+          approved = load_approved()
+          intervals = defaultdict(dict)
+          stats = Counter()
+          names = {(network, station): name for network, station, name in stations}
+          for row in rain:
+              tr = json.loads(row["timerange"])
+              level = json.loads(row["level"])
+              if signature("B13011", level, tr) in approved:
+                  add_precipitation_interval(
+                      intervals, row["network"], row["station_id"],
+                      timestamp(row["time_utc"]), tr[2], float(row["value"]), stats
+                  )
+          print("Accumulazioni complete:", sorted(
+              (names[(network, station)], end.isoformat(), round(value, 4))
+              for (network, station, end, _), value in hourly_precipitation(intervals, stats).items()
+          ))
           PY
       - name: Keep the diagnostic sample
         if: always() && steps.request.outputs.ids != ''
