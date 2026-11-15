@@ -44,7 +44,17 @@ jobs:
                       detail = value.get("message") or value.get("detail") or value.get("error")
                   except (ValueError, AttributeError):
                       detail = None
-                  print(f"{label}: HTTP {error.code} {str(detail)[:250]}", flush=True)
+                  diagnostic = body.decode("utf-8", errors="replace").casefold()
+                  reasons = {
+                      "available user quota": "available user quota exceeded",
+                      "disk quota": "disk quota exceeded",
+                      "maximum limit for output size": "maximum file size exceeded",
+                      "requested data exceeds allowed size": "requested data exceeds allowed size",
+                      "not authorized": "not authorized",
+                      "rate limit": "rate limit",
+                  }
+                  known = next((message for marker, message in reasons.items() if marker in diagnostic), None)
+                  print(f"{label}: HTTP {error.code} {known or str(detail)[:250]}; risposta di {len(body)} byte", flush=True)
                   return None
 
           def fields(network, start, end, token, *, rain=False, bbox=None):
@@ -79,7 +89,7 @@ jobs:
                   print(f"Ripetizione richiesta ordinaria mnw accettata: {answer.get('request_id')}")
           else:
               print("Ripetizione richiesta ordinaria mnw: stima o quota indisponibile.")
-          ids = ["5882781"]
+          ids = []
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
               print("ids=" + ",".join(ids), file=stream)
           PY
