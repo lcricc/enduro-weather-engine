@@ -18,10 +18,12 @@
     "data/observations/meteohub/request_5875750.jsonl",
     "data/observations/meteohub/request_5875752.jsonl",
     "data/observations/meteohub/request_5875753.jsonl",
-    "data/observations/meteohub/request_5875754.jsonl"
+    "data/observations/meteohub/request_5875754.jsonl",
+    "data/observations/meteohub/request_5877923.jsonl",
+    "data/observations/meteohub/request_5877925.jsonl"
   ],
-  "source_lines": 400827,
-  "normalized_rows": 367723,
+  "source_lines": 483213,
+  "normalized_rows": 379262,
   "stations": 1538,
   "networks": [
     "agrmet",
@@ -41,14 +43,14 @@
     "urbane"
   ],
   "quality_flags": {
-    "ok": 367723
+    "ok": 379262
   },
   "skipped_or_duplicate": {
-    "source_lines": 400827,
-    "unsupported_variable": 54039,
-    "duplicate_rows": 388
+    "source_lines": 483213,
+    "unsupported_variable": 61647,
+    "duplicate_rows": 63627
   },
   "first_datetime_utc": "2026-11-11T00:00:00Z",
-  "last_datetime_utc": "2026-11-15T06:26:00Z",
+  "last_datetime_utc": "2026-11-15T10:25:00Z",
   "note": "Only B13011 precipitation is supported. No region is inferred from coordinates; QC is structural, not scientific validation."
 }

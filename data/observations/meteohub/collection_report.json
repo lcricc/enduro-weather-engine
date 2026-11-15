@@ -1,9 +1,9 @@
 {
-  "generated_utc": "2026-11-15T08:27:57.843786+00:00",
+  "generated_utc": "2026-11-15T11:20:11.514586+00:00",
   "requests_total": 20,
-  "requests_completed": 17,
-  "files_saved": 15,
-  "records_downloaded": 396624,
+  "requests_completed": 15,
+  "files_saved": 13,
+  "records_downloaded": 379120,
   "requests_skipped": 2,
   "errors": [
     {
@@ -16,6 +16,8 @@
     }
   ],
   "saved_requests": [
+    5877925,
+    5877923,
     5875754,
     5875753,
     5875752,
@@ -26,10 +28,6 @@
     5871026,
     5871024,
     5867235,
-    5867234,
-    5867233,
-    5867232,
-    5867231,
-    5867230
+    5867234
   ]
 }
