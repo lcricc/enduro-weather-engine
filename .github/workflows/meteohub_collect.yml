@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: enduro-meteohub-precipitation-check
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   collect:
@@ -45,12 +45,12 @@ jobs:
 
           from meteohub_request_all import api, login, utc_string
 
-          # Sizes in bytes from the immediately preceding complete hour.
+          # JSON sizes after retaining only B13011 in the preceding hour's extract.
           REGIONS_BY_EXTRACT_SIZE = (
-              ("dpcn-marche", 451973),
-              ("dpcn-molise", 770515),
-              ("dpcn-lombardia", 1147135),
-              ("dpcn-liguria", 1209429),
+              ("dpcn-marche", 141181),
+              ("dpcn-lombardia", 301544),
+              ("dpcn-molise", 329400),
+              ("dpcn-liguria", 458993),
           )
 
           def remaining_quota(token):
@@ -90,6 +90,7 @@ jobs:
                   },
                   "output_format": "json",
                   "only_reliable": True,
+                  "filters": {"product": [{"code": "B13011"}]},
               }
 
               announced_quota = None
@@ -119,7 +120,7 @@ jobs:
                           regions = []
                           estimated_bytes = 0
                           for region, previous_size in REGIONS_BY_EXTRACT_SIZE:
-                              if (estimated_bytes + previous_size) * 1.05 > free:
+                              if (estimated_bytes + previous_size) * 1.20 > free:
                                   break
                               regions.append(region)
                               estimated_bytes += previous_size
