@@ -1,15 +1,11 @@
-
 name: ENDURO MeteoHub Automatic Collection
 
 on:
-  workflow_dispatch:
-    inputs:
-      request_ids:
-        description: "ID MeteoHub già esistenti, separati da virgola (vuoto = raccolta ordinaria)"
-        required: false
-        type: string
-  schedule:
-    - cron: "30 1,7,13,19 * * *"
+  push:
+    branches:
+      - meteohub-primo-confronto
+    paths:
+      - .github/workflows/meteohub_collect.yml
 
 permissions:
   contents: read
@@ -21,54 +17,123 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Request fresh MeteoHub observations
-        if: ${{ !inputs.request_ids }}
+      - name: Request observations for the first forecast hour
+        id: requests
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-        run: python meteohub_request_all.py
-
-      - name: Collect completed MeteoHub observations
-        env:
-          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
-          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          REQUEST_IDS: ${{ inputs.request_ids }}
-        shell: bash
+          VALID_HOUR_UTC: "2026-11-15T12:00:00+00:00"
+          READ_DELAY_MINUTES: "6"
+          REQUEST_ROUND: "1"
         run: |
-          if [[ -n "$REQUEST_IDS" ]]; then
-            mkdir -p targeted
-            cd targeted
-            python "$GITHUB_WORKSPACE/meteohub_collect.py" --request-ids "$REQUEST_IDS" --wait-seconds 240
-          else
-            python meteohub_collect.py
-          fi
+          python -u - <<'PY'
+          import os
+          import time
+          import urllib.error
+          from datetime import datetime, timedelta, timezone
 
-      - name: Clean and deduplicate observations
-        working-directory: ${{ inputs.request_ids && 'targeted' || '.' }}
+          from meteohub_request_all import api, login, utc_string
+
+          networks = (
+              "dpcn-liguria", "dpcn-lombardia", "dpcn-marche", "dpcn-molise",
+          )
+          hour = datetime.fromisoformat(os.environ["VALID_HOUR_UTC"])
+          now = datetime.now(timezone.utc)
+          target = hour + timedelta(minutes=int(os.environ["READ_DELAY_MINUTES"]))
+          print(f"Ora delle previsioni: {hour.isoformat()}. Richiesta dalle {target.isoformat()}.")
+          if hour.tzinfo is None or any((hour.minute, hour.second, hour.microsecond)):
+              raise ValueError("Indicare un orario esatto con fuso UTC")
+          if not now - timedelta(hours=24) <= hour <= now:
+              raise ValueError("L'ora da verificare deve essere trascorsa nelle ultime 24 ore")
+          while (seconds := (target - datetime.now(timezone.utc)).total_seconds()) > 0:
+              time.sleep(min(30, seconds))
+
+          token = login()
+          previous = api("/api/requests", token)
+          if not isinstance(previous, list):
+              raise RuntimeError("L'elenco delle richieste MeteoHub non è valido")
+          request_ids = []
+          for network in networks:
+              name = f"enduro-pilota-{hour:%Y%m%dT%H%MZ}-{network}-{os.environ['REQUEST_ROUND']}"
+              for item in previous:
+                  if not isinstance(item, dict):
+                      continue
+                  args = item.get("args")
+                  args = args if isinstance(args, dict) else {}
+                  if name in (item.get("name"), item.get("request_name"), args.get("request_name")):
+                      identifier = str(item.get("id", ""))
+                      if identifier.isascii() and identifier.isdecimal():
+                          request_ids.append(identifier)
+                          print(f"{network}: richiesta già presente {identifier}")
+                          break
+              else:
+                  payload = {
+                      "request_name": name,
+                      "dataset_names": [network],
+                      "reftime": {
+                          "from": utc_string(hour - timedelta(seconds=1)),
+                          "to": utc_string(hour + timedelta(seconds=1)),
+                      },
+                      "output_format": "json",
+                      "only_reliable": True,
+                  }
+                  try:
+                      result = api("/api/data", token, payload)
+                  except urllib.error.HTTPError as error:
+                      print(f"{network}: invio respinto con HTTP {error.code}")
+                      continue
+                  except (TimeoutError, urllib.error.URLError) as error:
+                      print(f"{network}: invio non confermato per {type(error).__name__}")
+                      continue
+                  identifier = str(result.get("request_id") or result.get("id") or "") if isinstance(result, dict) else ""
+                  if not (identifier.isascii() and identifier.isdecimal()):
+                      print(f"{network}: ID di richiesta assente")
+                      continue
+                  request_ids.append(identifier)
+                  print(f"{network}: richiesta {identifier}")
+          if not request_ids:
+              raise RuntimeError("MeteoHub non ha restituito ID per l'ora richiesta")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("ids=" + ",".join(request_ids) + "\n")
+          PY
+
+      - name: Download and wait for the selected observations
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+          REQUEST_IDS: ${{ steps.requests.outputs.ids }}
+        run: |
+          mkdir -p targeted
+          cd targeted
+          python "$GITHUB_WORKSPACE/meteohub_collect.py" --request-ids "$REQUEST_IDS" --wait-seconds 240
+
+      - name: Clean selected observations
+        working-directory: targeted
         run: python "$GITHUB_WORKSPACE/meteohub_clean.py"
 
       - name: Archive observations
-        if: ${{ success() || (always() && !inputs.request_ids) }}
         uses: actions/upload-artifact@v4
         with:
           name: meteohub-observations-${{ github.run_id }}
-          path: ${{ inputs.request_ids && 'targeted/data/observations/meteohub/' || 'data/observations/meteohub/' }}
-          if-no-files-found: warn
+          path: targeted/data/observations/meteohub/
+          if-no-files-found: error
           retention-days: 90
 
-      - name: Upload MeteoHub request statuses on failure
-        if: ${{ failure() && inputs.request_ids }}
+      - name: Archive request statuses on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: meteohub-request-status-${{ github.run_id }}
