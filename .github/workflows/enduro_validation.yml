@@ -2,11 +2,6 @@
 name: ENDURO MeteoHub Scientific Validation
 
 on:
-  push:
-    branches:
-      - meteohub-tolleranza-oraria
-    paths:
-      - .github/workflows/enduro_validation.yml
   workflow_dispatch:
   workflow_run:
     workflows:
@@ -24,7 +19,7 @@ concurrency:
 
 jobs:
   validate:
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
