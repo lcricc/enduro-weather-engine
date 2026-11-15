@@ -36,8 +36,8 @@ jobs:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
           VALID_HOUR_UTC: "2026-11-15T12:00:00+00:00"
-          READ_DELAY_MINUTES: "24"
-          REQUEST_ROUND: "4"
+          READ_DELAY_MINUTES: "35"
+          REQUEST_ROUND: "5"
         run: |
           python -u - <<'PY'
           import os
@@ -47,7 +47,7 @@ jobs:
 
           from meteohub_request_all import api, login, utc_string
 
-          networks = ("dpcn-marche", "dpcn-molise")
+          networks = ("dpcn-liguria", "dpcn-lombardia")
           hour = datetime.fromisoformat(os.environ["VALID_HOUR_UTC"])
           now = datetime.now(timezone.utc)
           target = hour + timedelta(minutes=int(os.environ["READ_DELAY_MINUTES"]))
@@ -91,7 +91,7 @@ jobs:
                       "request_name": name,
                       "dataset_names": [network],
                       "reftime": {
-                          "from": utc_string(hour - timedelta(minutes=15)),
+                          "from": utc_string(hour - timedelta(minutes=30)),
                           "to": utc_string(hour + timedelta(minutes=10)),
                       },
                       "output_format": "json",
