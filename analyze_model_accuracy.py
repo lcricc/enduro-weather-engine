@@ -243,6 +243,9 @@ def analyze():
         "source_preliminary_status": validation.get(
             "preliminary_status"
         ),
+        "source_observation_matching": validation.get(
+            "observation_matching"
+        ),
         "models_expected": MODELS,
         "variables": VARIABLES,
         "lead_buckets": BUCKETS,
