@@ -1,0 +1,112 @@
+name: ENDURO MeteoHub Storage Inventory
+
+on:
+  push:
+    branches: [meteohub-primo-confronto]
+    paths: [.github/workflows/meteohub_storage_inventory.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 89575287681bf340220de6588f2104b0948f89b6
+          persist-credentials: false
+      - name: Read MeteoHub account inventory
+        env:
+          METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
+          METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cat > "$RUNNER_TEMP/inventory-public.pem" <<'PEM'
+          -----BEGIN CERTIFICATE-----
+          MIIDGzCCAgOgAwIBAgIUV2dmhzeFF9anNSfOsUE4WcQ1uPwwDQYJKoZIhvcNAQEL
+          BQAwHTEbMBkGA1UEAwwSTWV0ZW9IdWIgaW52ZW50b3J5MB4XDTI2MTExNTIzMDg0
+          NVoXDTI2MTExNzIzMDg0NVowHTEbMBkGA1UEAwwSTWV0ZW9IdWIgaW52ZW50b3J5
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAydsnnwexzzKNMMdaICOd
+          n2kCZl2rFcgBHEwwFj4a9V/SPVQ2snEcQsDZ/VPAi8R5+ZgDhp5GiFpg6jLtdt4j
+          IJGRiCN0aNn4kd2dF2K+t1mmF4KOkNyATWEcBkXafNRLTvOIWDgnK6o0N9CA5p5H
+          Lkv1o+n8fFz84FuWfamDUiv5amGa2q5634EeWYvZWvykJ0QypXFaHuJMG5UXP7ER
+          73+iIqOctDN7XrWF7QUOpJnqCRxiUAJFssmM/SR/s/RM4jmNapvcaqIjoho7YQnd
+          98sfWL0D2uk/GyWxevqd4G8rK0ojA72yvpjn9HbmhhYg09y7omHRZILxRfbexmFh
+          gwIDAQABo1MwUTAdBgNVHQ4EFgQUBPeKlOQVO3MmJyCMLF4D7gwJXfowHwYDVR0j
+          BBgwFoAUBPeKlOQVO3MmJyCMLF4D7gwJXfowDwYDVR0TAQH/BAUwAwEB/zANBgkq
+          hkiG9w0BAQsFAAOCAQEAIW1phXquZI9CsXt6ot37jPBfxMBbcHT7vsHE+iufui7r
+          9GiZKBwq19RRAlBEr798XvCLx0NLT6QeRsHMxVAnQ6Xf8aSnKPXD4hCIJ4W2GI2e
+          o7PEoyLBvtxLHojaKyavFE/y+syqBUvqGmxfBF93ws5TyUveAREt2w3adwlcKT47
+          pfA+E8ovXj76jm8xMWrHbwADZn6iakQFuDCxgoUSEzXPdUd/xvINzFQ/J1k8DkjJ
+          J5hKR9BmUacLpvefnTROh7QXwuML3/Du4DyY/FqgIfQ3JfsbQp0GpXiXINSktRGT
+          itS8CeBkvU6f5cHEwJn/0uOvj5n8KtaqK6h6W+Rlmw==
+          -----END CERTIFICATE-----
+          PEM
+          python - "$RUNNER_TEMP/inventory.json" <<'PY'
+          import json
+          import sys
+          from urllib.parse import urlencode
+          from urllib.error import HTTPError
+          from meteohub_request_all import api, login
+
+          token = login()
+
+          def read(path, **query):
+              try:
+                  return api(path + ("?" + urlencode(query) if query else ""), token)
+              except HTTPError as error:
+                  return {"http_error": error.code}
+
+          def request_items():
+              result = read("/api/requests", get_total="true")
+              total = result.get("total") if isinstance(result, dict) else None
+              first = read("/api/requests")
+              if not isinstance(first, list):
+                  raise ValueError("Invalid request inventory")
+              items = {row["id"]: row for row in first}
+              if isinstance(total, int) and len(items) >= total:
+                  return total, items
+              for page_param, size_param in (("page", "size"), ("page", "per_page"), ("currentpage", "perpage")):
+                  for page in range(1, 31):
+                      response = read("/api/requests", **{page_param: page, size_param: 100})
+                      if not isinstance(response, list) or not response:
+                          break
+                      newer = {row["id"]: row for row in response if row["id"] not in items}
+                      items.update(newer)
+                      if isinstance(total, int) and len(items) >= total:
+                          return total, items
+                      if not newer and page > 1:
+                          break
+              return total, items
+
+          usage = read("/api/usage")
+          total, requests = request_items()
+          templates = read("/api/templates", get_total="true")
+          result = {
+              "usage": usage,
+              "requests_total": total,
+              "requests_seen": len(requests),
+              "templates_count": templates,
+              "requests": [
+                  {
+                      "id": value.get("id"),
+                      "name": value.get("name"),
+                      "status": value.get("status"),
+                      "datasets": (value.get("args") or {}).get("dataset_names"),
+                      "range": (value.get("args") or {}).get("reftime"),
+                      "file": value.get("fileoutput"),
+                      "bytes": value.get("filesize"),
+                  }
+                  for value in requests.values()
+              ],
+          }
+          with open(sys.argv[1], "w", encoding="utf-8") as out:
+              json.dump(result, out, separators=(",", ":"))
+          PY
+          openssl cms -encrypt -binary -aes-256-cbc \
+            -in "$RUNNER_TEMP/inventory.json" -outform DER \
+            -out "$RUNNER_TEMP/inventory.cms" "$RUNNER_TEMP/inventory-public.pem"
+          base64 -w 180 "$RUNNER_TEMP/inventory.cms" | sed 's/^/INVENTORY_ENCRYPTED /'
