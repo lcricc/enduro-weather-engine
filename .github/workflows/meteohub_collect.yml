@@ -17,8 +17,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,118 +27,70 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Request observations for the complete precipitation hour
+      - name: Request the complete hour around the forecast stations
         id: request
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          VALID_HOUR_UTC: "2026-11-15T14:00:00+00:00"
-          EARLIEST_REQUEST_UTC: "2026-11-15T14:41:00+00:00"
-          DEADLINE_UTC: "2026-11-15T14:56:00+00:00"
         run: |
           python -u - <<'PY'
           import os
-          import time
-          import urllib.error
-          from datetime import datetime, timedelta, timezone
+          from urllib.error import HTTPError
 
-          from meteohub_request_all import api, login, utc_string
+          from meteohub_request_all import api, login
 
-          def remaining_quota(token):
-              result = api("/api/hourly", token)
-              if not isinstance(result, dict) or type(result.get("remaining")) is not int:
-                  raise ValueError("Risposta non valida dal contatore delle richieste MeteoHub")
-              return result["remaining"]
+          # Bounds around the ten stations in each network in forecast archive 43710924892.
+          bounds_by_network = {
+              "dpcn-liguria": {"latmin": 43.79310, "latmax": 44.05220, "lonmin": 7.61868, "lonmax": 9.83614},
+              "dpcn-lombardia": {"latmin": 44.76783, "latmax": 45.47278, "lonmin": 9.09721, "lonmax": 10.82413},
+          }
+          token = login()
+          usage = api("/api/usage", token)
+          if isinstance(usage, dict) and type(usage.get("quota")) is int and type(usage.get("used")) is int:
+              print(f"Spazio libero MeteoHub: {usage['quota'] - usage['used']} byte")
 
-          def request_observations():
-              hour = datetime.fromisoformat(os.environ["VALID_HOUR_UTC"])
-              deadline = datetime.fromisoformat(os.environ["DEADLINE_UTC"])
-              name = f"enduro-precipitazioni-{hour:%Y%m%dT%H%MZ}-marche-molise"
-              earliest = datetime.fromisoformat(os.environ["EARLIEST_REQUEST_UTC"])
-              print(f"Finestra di misura fino alle {hour.isoformat()}. Controllo alle {earliest.isoformat()}.")
-              while (seconds := (earliest - datetime.now(timezone.utc)).total_seconds()) > 0:
-                  time.sleep(min(45, seconds))
-              token = login()
-              previous = api("/api/requests", token)
-              if not isinstance(previous, list):
-                  raise ValueError("Elenco richieste MeteoHub non valido")
-              for item in previous:
-                  if not isinstance(item, dict):
-                      continue
-                  if str(item.get("id")) == "5879348":
-                      detail = str(item.get("error_message") or "Motivo non indicato").splitlines()[0][:200]
-                      print(f"Estrazione filtrata precedente: {detail}")
-                  args = item.get("args")
-                  args = args if isinstance(args, dict) else {}
-                  if name in (item.get("name"), item.get("request_name"), args.get("request_name")):
-                      identifier = str(item.get("id", ""))
-                      if identifier.isascii() and identifier.isdecimal():
-                          print(f"Riutilizzo richiesta {identifier}")
-                          return identifier
-
-              payload = {
-                  "request_name": name,
-                  "dataset_names": ["dpcn-marche", "dpcn-molise"],
-                  "reftime": {
-                      "from": utc_string(hour - timedelta(hours=1, seconds=1)),
-                      "to": utc_string(hour + timedelta(seconds=1)),
-                  },
-                  "output_format": "json",
-                  "only_reliable": True,
-              }
-
-              announced_quota = None
-              while (seconds := (deadline - datetime.now(timezone.utc)).total_seconds()) > 0:
+          previous = api("/api/requests", token)
+          if not isinstance(previous, list):
+              raise RuntimeError("Elenco richieste MeteoHub non valido")
+          identifiers = []
+          for network, bounds in bounds_by_network.items():
+              name = f"enduro-precipitazioni-20261115T1400Z-stazioni-{network}"
+              item = next((item for item in previous if isinstance(item, dict) and item.get("name") == name), None)
+              if item is None:
                   try:
-                      remaining = remaining_quota(token)
-                  except urllib.error.HTTPError as error:
-                      if error.code != 401:
-                          raise
-                      token = login()
-                      remaining = remaining_quota(token)
-                  if remaining != announced_quota:
-                      print(f"Slot orari MeteoHub disponibili: {remaining}")
-                      announced_quota = remaining
-                  if remaining > 0:
-                      token = login()
-                      storage = api("/api/usage", token)
-                      if isinstance(storage, dict) and (
-                          isinstance(storage.get("quota"), int)
-                          and isinstance(storage.get("used"), int)
-                      ):
-                          free = storage["quota"] - storage["used"]
-                          print(f"Spazio libero MeteoHub: {free} byte")
-                          if free <= 0:
-                              raise RuntimeError("Spazio MeteoHub esaurito")
-                      try:
-                          result = api("/api/data", token, payload)
-                      except urllib.error.HTTPError as error:
-                          if error.code not in (401, 429) or remaining_quota(token) > 0:
-                              raise
-                      else:
-                          identifier = str(result.get("request_id") or result.get("id") or "") if isinstance(result, dict) else ""
-                          if not (identifier.isascii() and identifier.isdecimal()):
-                              raise RuntimeError("MeteoHub non ha confermato l'ID della richiesta")
-                          print(f"Richiesta congiunta {identifier}")
-                          return identifier
-                  remaining_time = (deadline - datetime.now(timezone.utc)).total_seconds()
-                  time.sleep(max(0, min(60, remaining_time)))
-              raise RuntimeError("Quota oraria esaurita fino al termine di questo tentativo")
+                      item = api("/api/data", token, {
+                          "request_name": name,
+                          "dataset_names": [network],
+                          "reftime": {"from": "2026-11-15T12:59:59.000Z", "to": "2026-11-15T14:00:01.000Z"},
+                          "filters": {"bounding_box": bounds},
+                          "output_format": "json",
+                          "only_reliable": True,
+                      })
+                  except HTTPError as error:
+                      print(f"{network}: HTTP {error.code}")
+                      continue
+              identifier = str(item.get("request_id") or item.get("id") or "") if isinstance(item, dict) else ""
+              if identifier.isascii() and identifier.isdecimal():
+                  identifiers.append(identifier)
+                  print(f"{network}: richiesta {identifier}")
+              else:
+                  print(f"{network}: ID richiesta assente")
 
-          identifier = request_observations()
+          if not identifiers:
+              raise RuntimeError("Nessuna richiesta MeteoHub accettata")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"id={identifier}\n")
+              output.write(f"ids={','.join(identifiers)}\n")
           PY
 
-      - name: Collect the regional extract
+      - name: Collect the regional extracts
         env:
           METEOHUB_USERNAME: ${{ secrets.METEOHUB_USERNAME }}
           METEOHUB_PASSWORD: ${{ secrets.METEOHUB_PASSWORD }}
-          REQUEST_ID: ${{ steps.request.outputs.id }}
+          REQUEST_IDS: ${{ steps.request.outputs.ids }}
         run: |
           mkdir -p targeted
           cd targeted
-          python "$GITHUB_WORKSPACE/meteohub_collect.py" --request-ids "$REQUEST_ID" --wait-seconds 240
+          python "$GITHUB_WORKSPACE/meteohub_collect.py" --request-ids "$REQUEST_IDS" --wait-seconds 240
 
       - name: Clean and deduplicate observations
         working-directory: targeted
