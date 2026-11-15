@@ -27,7 +27,7 @@ OBS = Path(
 FC_DIR = Path("data/forecasts/national")
 OUT = Path("data/validation/meteohub")
 APPROVED = Path("meteohub_approved_metadata.json")
-OBSERVATION_TOLERANCE = timedelta(minutes=5)
+OBSERVATION_TOLERANCE = timedelta(minutes=30)
 EXACT_TIME = timedelta(0)
 
 VARIABLES = {
@@ -170,6 +170,7 @@ def convert(value, unit):
 
 
 def closest_hour(measured_at):
+    """Assign observations at the half-hour boundary to the following hour."""
     hour = measured_at.replace(minute=0, second=0, microsecond=0)
     if measured_at.minute >= 30:
         hour += timedelta(hours=1)
@@ -782,6 +783,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
         ),
         "observation_matching": {
             "time_tolerance_seconds": time_tolerance.total_seconds(),
+            "half_hour_assignment": "following_hour",
             "latest_eligible_observation_utc": (
                 latest_observation.isoformat() if latest_observation else None
             ),
@@ -791,9 +793,13 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
             "complete_events_with_tolerance": (
                 sum(complete_event_offsets.values()) - complete_event_offsets[0]
             ),
-            "complete_event_offsets_seconds": [
-                {"observation_minus_forecast_seconds": offset, "events": count}
-                for offset, count in sorted(complete_event_offsets.items())
+            "event_offsets_seconds": [
+                {
+                    "observation_minus_forecast_seconds": offset,
+                    "events": count,
+                    "complete_events": complete_event_offsets[offset],
+                }
+                for offset, count in sorted(event_offsets.items())
             ],
         },
         "observation_diagnostics": dict(
@@ -820,7 +826,9 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE):
             "Only manually approved metadata accepted",
             "Hourly forecasts match the nearest approved station observation "
             "within the reported tolerance",
-            "Exact observations have priority; equal offsets prefer the earlier observation",
+            "Exact observations have priority",
+            "A half-hour observation belongs to the following hour",
+            "Equidistant observations for the same forecast hour prefer the earlier measurement",
             "Observation time must follow forecast acquisition",
             "Forecast acquisition is a proxy for issuance",
             "Official metrics require common-eight-model samples",
