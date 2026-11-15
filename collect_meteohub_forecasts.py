@@ -1,12 +1,16 @@
 
 #!/usr/bin/env python3
-"""ENDURO WEATHER ENGINE - Previsioni su stazioni MeteoHub."""
+"""ENDURO WEATHER ENGINE - MeteoHub Forecast Collector V2.1.
+
+Collects hourly forecasts from eight Open-Meteo models.
+Checks missing weather values for every model.
+Preserves the historical CSV structure.
+"""
 
 import csv
 import gzip
 import json
 import math
-import os
 import time
 import urllib.error
 import urllib.parse
@@ -16,13 +20,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-STATIONS = ROOT / "data/observations/meteohub/stations_meteohub.csv"
+
+STATIONS = (
+    ROOT
+    / "data/observations/meteohub/stations_meteohub.csv"
+)
+
 OUTPUT = ROOT / "data/forecasts/national"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 MODELS = [
     "ecmwf_ifs025",
-    "ecmwf_aifs025",
+    "ecmwf_aifs025_single",
     "icon_seamless",
     "gfs_seamless",
     "meteofrance_seamless",
@@ -52,28 +61,46 @@ FIELDS = [
 ]
 
 BATCH_SIZE = 10
+
 NOW = datetime.now(timezone.utc)
 STAMP = NOW.strftime("%Y%m%dT%H%M%SZ")
 
 
 def load_stations():
     if not STATIONS.is_file():
-        raise RuntimeError("Inventario MeteoHub mancante")
+        raise RuntimeError(
+            "Inventario MeteoHub mancante"
+        )
 
     stations = {}
-    with STATIONS.open(encoding="utf-8-sig", newline="") as f:
-        for row in csv.DictReader(f):
-            network = (row.get("network") or "").strip()
-            station_id = (row.get("station_id") or "").strip()
+
+    with STATIONS.open(
+        encoding="utf-8-sig",
+        newline=""
+    ) as file:
+
+        for row in csv.DictReader(file):
+            network = (
+                row.get("network") or ""
+            ).strip()
+
+            station_id = (
+                row.get("station_id") or ""
+            ).strip()
 
             try:
                 lat = float(row["latitude"])
                 lon = float(row["longitude"])
-            except (ValueError, TypeError, KeyError):
+            except (
+                ValueError,
+                TypeError,
+                KeyError
+            ):
                 continue
 
             if not (
-                network and station_id
+                network
+                and station_id
                 and math.isfinite(lat)
                 and math.isfinite(lon)
                 and 35 <= lat <= 48
@@ -81,7 +108,9 @@ def load_stations():
             ):
                 continue
 
-            stations[(network, station_id)] = {
+            stations[
+                (network, station_id)
+            ] = {
                 "network": network,
                 "station_id": station_id,
                 "latitude": lat,
@@ -89,7 +118,9 @@ def load_stations():
             }
 
     if not stations:
-        raise RuntimeError("Nessuna stazione MeteoHub valida")
+        raise RuntimeError(
+            "Nessuna stazione MeteoHub valida"
+        )
 
     return list(stations.values())
 
@@ -107,42 +138,94 @@ def fetch(params):
 
     for attempt in range(4):
         try:
-            req = urllib.request.Request(
+            request = urllib.request.Request(
                 url,
-                headers={"User-Agent": "EnduroWeatherEngine/2.0"},
+                headers={
+                    "User-Agent":
+                    "EnduroWeatherEngine/2.1"
+                }
             )
-            with urllib.request.urlopen(req, timeout=90) as response:
+
+            with urllib.request.urlopen(
+                request,
+                timeout=90
+            ) as response:
                 return json.load(response)
 
         except urllib.error.HTTPError as exc:
-            if exc.code not in (429, 500, 502, 503, 504):
+            if exc.code not in (
+                429, 500, 502, 503, 504
+            ):
                 raise
+
             if attempt == 3:
                 raise
-            retry = exc.headers.get("Retry-After")
+
+            retry = exc.headers.get(
+                "Retry-After"
+            )
+
             try:
-                delay = min(120, max(1, float(retry)))
+                delay = min(
+                    120,
+                    max(1, float(retry))
+                )
             except (TypeError, ValueError):
                 delay = 5 * (2 ** attempt)
+
             time.sleep(delay)
 
-        except (urllib.error.URLError, TimeoutError):
+        except (
+            urllib.error.URLError,
+            TimeoutError
+        ):
             if attempt == 3:
                 raise
-            time.sleep(5 * (2 ** attempt))
+
+            time.sleep(
+                5 * (2 ** attempt)
+            )
 
 
 def parse_utc(value):
-    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    dt = datetime.fromisoformat(
+        value.replace("Z", "+00:00")
+    )
+
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(
+            tzinfo=timezone.utc
+        )
+
     return dt.astimezone(timezone.utc)
 
 
-def collect_batch(batch, model, writer):
+def valid_number(value):
+    try:
+        number = float(value)
+        if math.isfinite(number):
+            return number
+    except (TypeError, ValueError):
+        pass
+
+    return None
+
+
+def collect_batch(
+    batch,
+    model,
+    writer,
+    diagnostics
+):
     params = {
-        "latitude": ",".join(str(s["latitude"]) for s in batch),
-        "longitude": ",".join(str(s["longitude"]) for s in batch),
+        "latitude": ",".join(
+            str(s["latitude"])
+            for s in batch
+        ),
+        "longitude": ",".join(
+            str(s["longitude"])
+            for s in batch
+        ),
         "hourly": ",".join(VARIABLES),
         "models": model,
         "forecast_days": 4,
@@ -150,41 +233,120 @@ def collect_batch(batch, model, writer):
     }
 
     payload = fetch(params)
-    responses = payload if isinstance(payload, list) else [payload]
+
+    responses = (
+        payload
+        if isinstance(payload, list)
+        else [payload]
+    )
 
     if len(responses) != len(batch):
-        raise RuntimeError("Numero località restituito non corretto")
+        raise RuntimeError(
+            "Numero localita restituito "
+            "non corretto"
+        )
 
     written = 0
 
-    for station, response in zip(batch, responses):
-        hourly = response.get("hourly", {})
-        times = hourly.get("time", [])
+    for station, response in zip(
+        batch, responses
+    ):
+        if not isinstance(response, dict):
+            raise RuntimeError(
+                "Risposta API non valida"
+            )
+
+        if response.get("error"):
+            raise RuntimeError(
+                str(response.get("reason"))
+            )
+
+        hourly = response.get(
+            "hourly", {}
+        )
+
+        times = hourly.get(
+            "time", []
+        )
+
+        def field(name, index):
+            values = hourly.get(name)
+
+            if not isinstance(
+                values, list
+            ):
+                return None
+
+            if index >= len(values):
+                return None
+
+            return valid_number(
+                values[index]
+            )
 
         for i, raw_time in enumerate(times):
             valid = parse_utc(raw_time)
+
             if valid <= NOW:
                 continue
 
-            def field(name):
-                values = hourly.get(name) or []
-                return values[i] if i < len(values) else None
+            temperature = field(
+                "temperature_2m", i
+            )
+
+            precipitation = field(
+                "precipitation", i
+            )
+
+            wind = field(
+                "wind_speed_10m", i
+            )
+
+            diagnostics["rows"] += 1
+
+            for name, value in (
+                ("temperature", temperature),
+                ("precipitation", precipitation),
+                ("wind", wind),
+            ):
+                key = (
+                    f"{name}_valid"
+                    if value is not None
+                    else f"{name}_missing"
+                )
+
+                diagnostics[key] += 1
 
             writer.writerow({
-                "acquired_utc": NOW.isoformat(),
-                "network": station["network"],
-                "station_id": station["station_id"],
-                "latitude": station["latitude"],
-                "longitude": station["longitude"],
-                "model": model,
-                "valid_time_utc": valid.isoformat(),
-                "lead_hours": round(
-                    (valid - NOW).total_seconds() / 3600, 3
-                ),
-                "temperature_2m_c": field("temperature_2m"),
-                "precipitation_mm": field("precipitation"),
-                "wind_speed_10m_kmh": field("wind_speed_10m"),
+                "acquired_utc":
+                    NOW.isoformat(),
+                "network":
+                    station["network"],
+                "station_id":
+                    station["station_id"],
+                "latitude":
+                    station["latitude"],
+                "longitude":
+                    station["longitude"],
+                "model":
+                    model,
+                "valid_time_utc":
+                    valid.isoformat(),
+                "lead_hours":
+                    round(
+                        (
+                            valid - NOW
+                        ).total_seconds() / 3600,
+                        3
+                    ),
+                "temperature_2m_c":
+                    temperature,
+                "precipitation_mm":
+                    precipitation,
+                "wind_speed_10m_kmh":
+                    wind,
             })
+
             written += 1
 
     return written
@@ -192,25 +354,54 @@ def collect_batch(batch, model, writer):
 
 def main():
     stations = load_stations()
-    target = OUTPUT / f"forecasts_meteohub_{STAMP}.csv.gz"
-    report_path = OUTPUT / f"report_meteohub_{STAMP}.json"
+
+    target = OUTPUT / (
+        f"forecasts_meteohub_{STAMP}.csv.gz"
+    )
+
+    report_path = OUTPUT / (
+        f"report_meteohub_{STAMP}.json"
+    )
 
     counts = Counter()
     errors = []
+    diagnostics = {}
 
     with gzip.open(
-        target, "wt", encoding="utf-8", newline=""
-    ) as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDS)
+        target,
+        "wt",
+        encoding="utf-8",
+        newline=""
+    ) as file:
+
+        writer = csv.DictWriter(
+            file,
+            fieldnames=FIELDS
+        )
+
         writer.writeheader()
 
         for model in MODELS:
+            model_stats = Counter()
+            diagnostics[model] = model_stats
+
             for index, batch in enumerate(
-                chunks(stations, BATCH_SIZE), 1
+                chunks(
+                    stations,
+                    BATCH_SIZE
+                ),
+                1
             ):
                 try:
-                    count = collect_batch(batch, model, writer)
+                    count = collect_batch(
+                        batch,
+                        model,
+                        writer,
+                        model_stats
+                    )
+
                     counts[model] += count
+
                 except Exception as exc:
                     errors.append({
                         "model": model,
@@ -220,29 +411,80 @@ def main():
 
                 time.sleep(1)
 
-            print(model, counts[model], flush=True)
+            print(
+                f"{model}: "
+                f"{counts[model]} righe, "
+                f"{model_stats['temperature_valid']} "
+                f"temperature valide, "
+                f"{model_stats['wind_valid']} "
+                f"valori vento validi",
+                flush=True
+            )
+
+            # Detect empty model datasets.
+            if (
+                counts[model] > 0
+                and model_stats[
+                    "temperature_valid"
+                ] == 0
+                and model_stats[
+                    "wind_valid"
+                ] == 0
+            ):
+                errors.append({
+                    "model": model,
+                    "batch": "all",
+                    "error":
+                        "Nessun valore valido "
+                        "di temperatura o vento",
+                })
 
     report = {
+        "engine": "ENDURO WEATHER ENGINE",
+        "version": "Forecast Collector V2.1",
         "acquired_utc": NOW.isoformat(),
         "stations": len(stations),
         "models": MODELS,
         "forecast_rows": dict(counts),
-        "total_rows": sum(counts.values()),
+        "total_rows": sum(
+            counts.values()
+        ),
+        "model_diagnostics": {
+            model: dict(stats)
+            for model, stats
+            in diagnostics.items()
+        },
         "failed_batches": len(errors),
         "errors": errors,
-        "archive": str(target.relative_to(ROOT)),
+        "archive": str(
+            target.relative_to(ROOT)
+        ),
     }
 
     report_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+        json.dumps(
+            report,
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
     )
 
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            report,
+            ensure_ascii=False,
+            indent=2
+        )
+    )
 
-    if not sum(counts.values()) or errors:
+    if (
+        not sum(counts.values())
+        or errors
+    ):
         raise RuntimeError(
-            "Raccolta MeteoHub incompleta: consultare il report"
+            "Raccolta MeteoHub incompleta: "
+            "consultare il report"
         )
 
 
