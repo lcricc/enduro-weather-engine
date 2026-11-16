@@ -60,7 +60,9 @@ FIELDS = [
     "wind_speed_10m_kmh",
 ]
 
-BATCH_SIZE = 10
+BATCH_SIZE = 25
+MAX_WEIGHTED_CALLS = 4500
+WEIGHTED_CALLS_PER_SECOND = 8
 
 NOW = datetime.now(timezone.utc)
 STAMP = NOW.strftime("%Y%m%dT%H%M%SZ")
@@ -130,13 +132,33 @@ def chunks(items, size):
         yield items[i:i + size]
 
 
-def fetch(params):
+class ForecastQuotaExceeded(RuntimeError):
+    """Stop the whole run when Open-Meteo or the job reaches its budget."""
+
+
+class ForecastBudget:
+    def __init__(self):
+        self.calls = 0
+        self.next_request = 0.0
+
+    def reserve(self, locations):
+        if self.calls + locations > MAX_WEIGHTED_CALLS:
+            raise ForecastQuotaExceeded("Run budget for Open-Meteo exhausted")
+        delay = self.next_request - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        self.next_request = time.monotonic() + locations / WEIGHTED_CALLS_PER_SECOND
+        self.calls += locations
+
+
+def fetch(params, budget):
     url = (
         "https://api.open-meteo.com/v1/forecast?"
         + urllib.parse.urlencode(params)
     )
 
     for attempt in range(4):
+        budget.reserve(params["latitude"].count(",") + 1)
         try:
             request = urllib.request.Request(
                 url,
@@ -159,6 +181,8 @@ def fetch(params):
                 raise
 
             if attempt == 3:
+                if exc.code == 429:
+                    raise ForecastQuotaExceeded("Open-Meteo quota reached") from exc
                 raise
 
             retry = exc.headers.get(
@@ -215,7 +239,8 @@ def collect_batch(
     batch,
     model,
     writer,
-    diagnostics
+    diagnostics,
+    budget,
 ):
     params = {
         "latitude": ",".join(
@@ -232,7 +257,7 @@ def collect_batch(
         "timezone": "GMT",
     }
 
-    payload = fetch(params)
+    payload = fetch(params, budget)
 
     responses = (
         payload
@@ -352,6 +377,27 @@ def collect_batch(
     return written
 
 
+def close_forecast_cycle(staged, target, acquired):
+    """Give all models a common acquisition time after the last download."""
+    counts = Counter()
+    with (
+        gzip.open(staged, "rt", encoding="utf-8", newline="") as source,
+        gzip.open(target, "wt", encoding="utf-8", newline="") as destination,
+    ):
+        writer = csv.DictWriter(destination, fieldnames=FIELDS)
+        writer.writeheader()
+        for row in csv.DictReader(source):
+            ahead = (parse_utc(row["valid_time_utc"]) - acquired).total_seconds() / 3600
+            if ahead <= 0:
+                continue
+            row["acquired_utc"] = acquired.isoformat()
+            row["lead_hours"] = round(ahead, 3)
+            writer.writerow(row)
+            counts[row["model"]] += 1
+    staged.unlink()
+    return counts
+
+
 def main():
     stations = load_stations()
 
@@ -364,11 +410,13 @@ def main():
     )
 
     counts = Counter()
+    budget = ForecastBudget()
+    staged = target.with_suffix(".partial")
     errors = []
     diagnostics = {}
 
     with gzip.open(
-        target,
+        staged,
         "wt",
         encoding="utf-8",
         newline=""
@@ -397,19 +445,20 @@ def main():
                         batch,
                         model,
                         writer,
-                        model_stats
+                        model_stats,
+                        budget,
                     )
 
                     counts[model] += count
 
+                except ForecastQuotaExceeded:
+                    raise
                 except Exception as exc:
                     errors.append({
                         "model": model,
                         "batch": index,
                         "error": str(exc)[:250],
                     })
-
-                time.sleep(1)
 
             print(
                 f"{model}: "
@@ -439,16 +488,24 @@ def main():
                         "di temperatura o vento",
                 })
 
+    acquired = datetime.now(timezone.utc)
+    counts = close_forecast_cycle(staged, target, acquired)
+    if any(counts[model] == 0 for model in MODELS):
+        errors.append({"error": "At least one model has no archived forecast rows"})
     report = {
         "engine": "ENDURO WEATHER ENGINE",
-        "version": "Forecast Collector V2.1",
-        "acquired_utc": NOW.isoformat(),
+        "version": "Forecast Collector V2.2",
+        "collection_started_utc": NOW.isoformat(),
+        "acquired_utc": acquired.isoformat(),
+        "weighted_api_calls_estimate": budget.calls,
+        "data_source": "Open-Meteo (https://open-meteo.com/)",
         "stations": len(stations),
         "models": MODELS,
         "forecast_rows": dict(counts),
         "total_rows": sum(
             counts.values()
         ),
+        "model_diagnostics_scope": "downloaded forecasts before the common acquisition time cutoff",
         "model_diagnostics": {
             model: dict(stats)
             for model, stats
