@@ -17,6 +17,7 @@ import csv
 import gzip
 import json
 import math
+import os
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -35,6 +36,13 @@ HOUR = timedelta(hours=1)
 PRECIPITATION_CODE = "B13011"
 PRECIPITATION_VARIABLE = "precipitation_mm"
 PRECIPITATION_UNITS = ("kg/m2", "kg/m**2", "kg/m^2", "kg/m²", "mm")
+PRECIPITATION_THRESHOLD_MM = 0.1
+PRECIPITATION_OUTCOMES = {
+    (True, True): "hits",
+    (False, True): "misses",
+    (True, False): "false_alarms",
+    (False, False): "correct_dry",
+}
 
 VARIABLES = {
     "B12101": "temperature_2m_c",
@@ -65,6 +73,18 @@ FIELDS = [
     "mae",
     "rmse",
     "bias",
+]
+
+PRECIPITATION_FIELDS = [
+    "model",
+    "lead_bucket",
+    "threshold_mm",
+    "n",
+    "observed_wet",
+    *PRECIPITATION_OUTCOMES.values(),
+    "probability_of_detection",
+    "false_alarm_ratio",
+    "critical_success_index",
 ]
 
 
@@ -475,7 +495,58 @@ def calculate_metrics(errors):
     return metrics
 
 
-def save_csv(path, metrics):
+def precipitation_metrics(counts):
+    rows = []
+    for (model, bucket), outcomes in sorted(counts.items()):
+        hits = outcomes["hits"]
+        misses = outcomes["misses"]
+        false_alarms = outcomes["false_alarms"]
+        observed_wet = hits + misses
+        forecast_wet = hits + false_alarms
+        rain_cases = forecast_wet + misses
+        rows.append({
+            "model": model,
+            "lead_bucket": bucket,
+            "threshold_mm": PRECIPITATION_THRESHOLD_MM,
+            "n": sum(outcomes.values()),
+            "observed_wet": observed_wet,
+            **{name: outcomes[name] for name in PRECIPITATION_OUTCOMES.values()},
+            "probability_of_detection": round(hits / observed_wet, 4) if observed_wet else None,
+            "false_alarm_ratio": round(false_alarms / forecast_wet, 4) if forecast_wet else None,
+            "critical_success_index": round(hits / rain_cases, 4) if rain_cases else None,
+        })
+    return rows
+
+
+def write_precipitation_summary(rows):
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary:
+        return
+
+    threshold = str(PRECIPITATION_THRESHOLD_MM).replace(".", ",")
+    lines = [
+        "## Confronto sulla precipitazione oraria",
+        "",
+        f"Almeno {threshold} mm in un’ora. Stesso campione per gli otto modelli in ogni fascia.",
+        "",
+    ]
+    if rows:
+        lines.extend([
+            "| Modello | Preavviso | Confronti | Ore di pioggia | Piogge previste | Piogge mancate | Falsi allarmi | Ore asciutte previste |",
+            "|---|---|---:|---:|---:|---:|---:|---:|",
+        ])
+        for row in rows:
+            lines.append(
+                "| {model} | {lead_bucket} | {n} | {observed_wet} | {hits} | {misses} | {false_alarms} | {correct_dry} |".format(**row)
+            )
+    else:
+        lines.append("In attesa di confronti completi sulla precipitazione per gli otto modelli.")
+
+    with Path(summary).open("a", encoding="utf-8") as file:
+        file.write("\n".join(lines) + "\n")
+
+
+def save_csv(path, metrics, fields=FIELDS):
     with path.open(
         "w",
         newline="",
@@ -484,7 +555,7 @@ def save_csv(path, metrics):
 
         writer = csv.DictWriter(
             file,
-            fieldnames=FIELDS
+            fieldnames=fields
         )
 
         writer.writeheader()
@@ -784,6 +855,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
     official_errors = defaultdict(list)
     exact_time_errors = defaultdict(list)
     preliminary_errors = defaultdict(list)
+    precipitation_counts = defaultdict(Counter)
     event_offsets = Counter()
     complete_event_offsets = Counter()
 
@@ -845,10 +917,16 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
             official_errors[key].append(error)
             if not offset:
                 exact_time_errors[key].append(error)
+            if variable == PRECIPITATION_VARIABLE:
+                outcome = PRECIPITATION_OUTCOMES[
+                    (predicted >= PRECIPITATION_THRESHOLD_MM, observed >= PRECIPITATION_THRESHOLD_MM)
+                ]
+                precipitation_counts[(model, bucket)][outcome] += 1
 
     metrics = calculate_metrics(
         official_errors
     )
+    rain_metrics = precipitation_metrics(precipitation_counts)
 
     plan = recovery_plan(
         gaps, gap_forecasts, gap_coordinates, verified_rain_stations, all_models
@@ -973,6 +1051,10 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
         ),
         "model_diagnostics": model_report,
         "metrics": metrics,
+        "precipitation_occurrence": {
+            "threshold_mm": PRECIPITATION_THRESHOLD_MM,
+            "metrics": rain_metrics,
+        },
         "exact_time_metrics": calculate_metrics(exact_time_errors),
         "preliminary_metrics": preliminary_metrics,
         "status": (
@@ -1024,6 +1106,8 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
         OUT / "preliminary_metrics.csv",
         preliminary_metrics
     )
+    save_csv(OUT / "precipitation_occurrence.csv", rain_metrics, PRECIPITATION_FIELDS)
+    write_precipitation_summary(rain_metrics)
 
     (
         OUT / "model_diagnostics.json"
