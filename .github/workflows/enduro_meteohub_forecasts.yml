@@ -10,10 +10,6 @@ on:
         type: string
   schedule:
     - cron: "15 4 * * *"
-  push:
-    branches: [previsioni-stazioni-nazionali]
-    paths:
-      - .github/workflows/enduro_meteohub_forecasts.yml
 
 permissions:
   contents: read
