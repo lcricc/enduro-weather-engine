@@ -3,8 +3,6 @@ name: ENDURO NOAA observations
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '42 6 * * *'
 
 permissions:
   contents: write
