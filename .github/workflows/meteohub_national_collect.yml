@@ -3,8 +3,6 @@ name: MeteoHub - Archivio nazionale
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "35 7 * * *"
 
 permissions:
   contents: write
