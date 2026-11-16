@@ -1,24 +1,159 @@
 {
-  "generated_utc": "2026-11-15T09:07:48.769173+00:00",
+  "generated_utc": "2026-11-16T10:35:46.271485+00:00",
   "observation_files": 2,
-  "observation_station_hours": 864819,
-  "forecast_rows_scanned": 437960,
-  "matched_forecast_rows": 0,
-  "metrics": [],
-  "diagnostics": {
-    "forecast_files": 8,
-    "observation_quality": {
-      "rows_scanned": 1564098,
-      "valid_rows": 1564098
+  "observation_station_hours": 865283,
+  "forecast_rows_scanned": 625640,
+  "matched_forecast_rows": 2976,
+  "metrics": [
+    {
+      "model": "arpege_world",
+      "variable": "temperature_2m_c",
+      "lead_bucket": "0-24h",
+      "count": 372,
+      "mae": 1.251,
+      "rmse": 1.722,
+      "bias": 0.221
     },
-    "unmatched_forecast_rows": 437960,
+    {
+      "model": "arpege_world",
+      "variable": "wind_speed_10m_kmh",
+      "lead_bucket": "0-24h",
+      "count": 290,
+      "mae": 4.302,
+      "rmse": 5.571,
+      "bias": 1.529
+    },
+    {
+      "model": "ecmwf_ifs025",
+      "variable": "temperature_2m_c",
+      "lead_bucket": "0-24h",
+      "count": 372,
+      "mae": 0.862,
+      "rmse": 1.143,
+      "bias": -0.046
+    },
+    {
+      "model": "ecmwf_ifs025",
+      "variable": "wind_speed_10m_kmh",
+      "lead_bucket": "0-24h",
+      "count": 290,
+      "mae": 3.479,
+      "rmse": 4.442,
+      "bias": -2.201
+    },
+    {
+      "model": "gem_seamless",
+      "variable": "temperature_2m_c",
+      "lead_bucket": "0-24h",
+      "count": 372,
+      "mae": 1.509,
+      "rmse": 1.784,
+      "bias": -0.742
+    },
+    {
+      "model": "gem_seamless",
+      "variable": "wind_speed_10m_kmh",
+      "lead_bucket": "0-24h",
+      "count": 290,
+      "mae": 3.219,
+      "rmse": 4.145,
+      "bias": -0.556
+    },
+    {
+      "model": "gfs_seamless",
+      "variable": "temperature_2m_c",
+      "lead_bucket": "0-24h",
+      "count": 372,
+      "mae": 0.967,
+      "rmse": 1.317,
+      "bias": 0.004
+    },
+    {
+      "model": "gfs_seamless",
+      "variable": "wind_speed_10m_kmh",
+      "lead_bucket": "0-24h",
+      "count": 290,
+      "mae": 3.63,
+      "rmse": 4.662,
+      "bias": -0.435
+    },
+    {
+      "model": "icon_seamless",
+      "variable": "temperature_2m_c",
+      "lead_bucket": "0-24h",
+      "count": 372,
+      "mae": 0.882,
+      "rmse": 1.203,
+      "bias": 0.445
+    },
+    {
+      "model": "icon_seamless",
+      "variable": "wind_speed_10m_kmh",
+      "lead_bucket": "0-24h",
+      "count": 290,
+      "mae": 2.764,
+      "rmse": 3.713,
+      "bias": -0.397
+    },
+    {
+      "model": "meteofrance_seamless",
+      "variable": "temperature_2m_c",
+      "lead_bucket": "0-24h",
+      "count": 372,
+      "mae": 0.817,
+      "rmse": 1.084,
+      "bias": 0.407
+    },
+    {
+      "model": "meteofrance_seamless",
+      "variable": "wind_speed_10m_kmh",
+      "lead_bucket": "0-24h",
+      "count": 290,
+      "mae": 3.251,
+      "rmse": 3.89,
+      "bias": 0.868
+    },
+    {
+      "model": "ukmo_seamless",
+      "variable": "temperature_2m_c",
+      "lead_bucket": "0-24h",
+      "count": 372,
+      "mae": 0.885,
+      "rmse": 1.206,
+      "bias": 0.146
+    },
+    {
+      "model": "ukmo_seamless",
+      "variable": "wind_speed_10m_kmh",
+      "lead_bucket": "0-24h",
+      "count": 290,
+      "mae": 2.856,
+      "rmse": 3.76,
+      "bias": 0.431
+    }
+  ],
+  "diagnostics": {
+    "forecast_files": 12,
+    "observation_quality": {
+      "rows_scanned": 1564818,
+      "valid_rows": 1564818
+    },
+    "unmatched_forecast_rows": 622664,
     "excluded_before_matching": 0,
-    "missing_station_hour_pairs": 437960,
-    "match_rate_percent": 0.0,
-    "primary_cause": "forecast_after_station_observations",
+    "missing_station_hour_pairs": 622664,
+    "match_rate_percent": 0.48,
+    "primary_cause": "MATCHES_FOUND",
     "reason_counts": {
-      "forecast_after_station_observations": 412504,
-      "station_not_in_observations": 25456
+      "forecast_after_station_observations": 582536,
+      "hour_mismatch_within_1h": 1288,
+      "hour_mismatch_within_3h": 2368,
+      "matched_rows": 2976,
+      "matched_without_usable_values": 372,
+      "missing_forecast_temperature_2m_c": 372,
+      "missing_forecast_wind_speed_10m_kmh": 372,
+      "missing_observation_wind_speed_10m_kmh": 574,
+      "station_not_in_observations": 25456,
+      "station_time_not_available": 11016
     },
     "examples": {
       "station_not_in_observations": [
@@ -58,7 +193,7 @@
           "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
         }
       ],
-      "forecast_after_station_observations": [
+      "station_time_not_available": [
         {
           "model": "ecmwf_ifs025",
           "network": "noaa_isd",
@@ -93,6 +228,117 @@
           "station_id": "11129099999",
           "valid_time_utc": "2026-11-14T14:00:00+00:00",
           "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        }
+      ],
+      "forecast_after_station_observations": [
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T17:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T18:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T19:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T20:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_isd",
+          "station_id": "11129099999",
+          "valid_time_utc": "2026-11-14T21:00:00+00:00",
+          "acquired_utc": "2026-11-14T09:26:56.790508+00:00"
+        }
+      ],
+      "hour_mismatch_within_1h": [
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBH",
+          "valid_time_utc": "2026-11-14T13:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBN",
+          "valid_time_utc": "2026-11-14T16:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBP",
+          "valid_time_utc": "2026-11-14T17:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBQ",
+          "valid_time_utc": "2026-11-14T16:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBS",
+          "valid_time_utc": "2026-11-14T13:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        }
+      ],
+      "hour_mismatch_within_3h": [
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBH",
+          "valid_time_utc": "2026-11-14T14:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBH",
+          "valid_time_utc": "2026-11-14T15:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBN",
+          "valid_time_utc": "2026-11-14T17:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBN",
+          "valid_time_utc": "2026-11-14T18:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
+        },
+        {
+          "model": "ecmwf_ifs025",
+          "network": "noaa_ghcnh",
+          "station_id": "ITI0000LIBP",
+          "valid_time_utc": "2026-11-14T18:00:00+00:00",
+          "acquired_utc": "2026-11-14T11:23:25.081500+00:00"
         }
       ]
     }
