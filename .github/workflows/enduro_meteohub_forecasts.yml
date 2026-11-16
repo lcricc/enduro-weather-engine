@@ -35,6 +35,7 @@ jobs:
 
       - name: Find latest station inventory
         id: inventory
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -56,6 +57,8 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download MeteoHub stations
+        if: ${{ steps.inventory.outputs.run_id != '' }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.inventory.outputs.run_id }}
@@ -111,7 +114,9 @@ jobs:
           DIR=data/observations/meteohub
           mkdir -p "$DIR/clean"
           cp "$FOUND" "$DIR/clean/observations_clean.csv"
-          cp "$DIR/stations_meteohub.csv" "$DIR/stations_original.csv"
+          if [[ -s "$DIR/stations_meteohub.csv" ]]; then
+            cp "$DIR/stations_meteohub.csv" "$DIR/stations_original.csv"
+          fi
           python prepare_meteohub_stations.py
 
           python - <<'PY'
@@ -127,8 +132,11 @@ jobs:
 
           with OUTPUT.open(encoding="utf-8-sig", newline="") as source:
               candidates = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
-          with OUTPUT.with_name("stations_original.csv").open(encoding="utf-8-sig", newline="") as source:
-              stations = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
+          stations = {}
+          legacy = OUTPUT.with_name("stations_original.csv")
+          if legacy.is_file():
+              with legacy.open(encoding="utf-8-sig", newline="") as source:
+                  stations = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
 
           observations, _ = load_observations(load_approved())
           latest = {}
