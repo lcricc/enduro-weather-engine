@@ -35,6 +35,7 @@ jobs:
 
       - name: Find latest station inventory
         id: inventory
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -56,6 +57,8 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download MeteoHub stations
+        if: ${{ steps.inventory.outputs.run_id != '' }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.inventory.outputs.run_id }}
@@ -111,7 +114,9 @@ jobs:
           DIR=data/observations/meteohub
           mkdir -p "$DIR/clean"
           cp "$FOUND" "$DIR/clean/observations_clean.csv"
-          cp "$DIR/stations_meteohub.csv" "$DIR/stations_original.csv"
+          if [[ -s "$DIR/stations_meteohub.csv" ]]; then
+            cp "$DIR/stations_meteohub.csv" "$DIR/stations_original.csv"
+          fi
           python prepare_meteohub_stations.py
 
           python - <<'PY'
@@ -127,8 +132,11 @@ jobs:
 
           with OUTPUT.open(encoding="utf-8-sig", newline="") as source:
               candidates = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
-          with OUTPUT.with_name("stations_original.csv").open(encoding="utf-8-sig", newline="") as source:
-              stations = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
+          stations = {}
+          legacy = OUTPUT.with_name("stations_original.csv")
+          if legacy.is_file():
+              with legacy.open(encoding="utf-8-sig", newline="") as source:
+                  stations = {(row["network"], row["station_id"]): row for row in csv.DictReader(source)}
 
           observations, _ = load_observations(load_approved())
           latest = {}
@@ -162,6 +170,51 @@ jobs:
               writer.writerows(stations.values())
           print(f"Stazioni per la raccolta previsioni: {len(stations)}")
           PY
+
+      - name: Prepare a national catalog from verified MeteoHub observations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/meteohub-forecast-stations"
+          mkdir -p "$work/observations" "$work/forecast"
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+            --jq '.[].tagName' > "$work/tags.txt"
+
+          latest_forecast=$(awk '/^meteohub-forecasts-[0-9]+$/' "$work/tags.txt" | sort -Vr | awk 'NR==1')
+          previous="$work/meteohub_station_catalog.csv"
+          if [[ -n "$latest_forecast" ]]; then
+            gh release download "$latest_forecast" --repo "$GITHUB_REPOSITORY" \
+              --pattern 'forecasts-*.tar.gz' --pattern 'forecasts-*.sha256' --dir "$work/forecast"
+            (
+              cd "$work/forecast"
+              sha256sum -c -- *.sha256
+              member=$(tar -tzf ./*.tar.gz | awk '/\/meteohub_station_catalog\.csv$/ {print}')
+              if [[ -n "$member" ]]; then
+                tar -xOf ./*.tar.gz "$member" > "$previous"
+              fi
+            )
+          fi
+
+          limit=100
+          [[ ! -s "$previous" ]] || limit=8
+          mapfile -t tags < <(awk '/^meteohub-observations-[0-9]+$/' "$work/tags.txt" | sort -Vr | sed -n "1,${limit}p")
+          for tag in "${tags[@]}"; do
+            destination="$work/observations/$tag"
+            mkdir -p "$destination"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+              --pattern 'observations-*.tar.gz' --pattern 'observations-*.sha256' --dir "$destination"
+            (
+              cd "$destination"
+              sha256sum -c -- *.sha256
+              tar -xzf ./*.tar.gz --wildcards '*/observations_clean.csv'
+              rm -- ./*.tar.gz
+            )
+          done
+          python prepare_forecast_stations.py "$work/observations" \
+            --previous-catalog "$previous" \
+            --additional-observations data/observations/meteohub/clean/observations_clean.csv
 
       - name: Collect forecasts from eight models
         run: python collect_meteohub_forecasts.py
