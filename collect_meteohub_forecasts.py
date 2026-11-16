@@ -7,6 +7,7 @@ Checks missing weather values for every model.
 Preserves the historical CSV structure.
 """
 
+import argparse
 import csv
 import gzip
 import json
@@ -16,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -63,6 +64,9 @@ FIELDS = [
 BATCH_SIZE = 25
 MAX_WEIGHTED_CALLS = 4500
 WEIGHTED_CALLS_PER_SECOND = 8
+MAX_COMBINED_STATIONS = 3900
+COMBINED_BUDGET = 9900
+COMBINED_CALLS_PER_SECOND = 1.25
 
 NOW = datetime.now(timezone.utc)
 STAMP = NOW.strftime("%Y%m%dT%H%M%SZ")
@@ -137,18 +141,21 @@ class ForecastQuotaExceeded(RuntimeError):
 
 
 class ForecastBudget:
-    def __init__(self):
+    def __init__(self, max_calls=MAX_WEIGHTED_CALLS, calls_per_second=WEIGHTED_CALLS_PER_SECOND):
         self.calls = 0
         self.next_request = 0.0
+        self.max_calls = max_calls
+        self.calls_per_second = calls_per_second
 
-    def reserve(self, locations):
-        if self.calls + locations > MAX_WEIGHTED_CALLS:
+    def reserve(self, weight):
+        total = round(self.calls + weight, 1)
+        if total > self.max_calls:
             raise ForecastQuotaExceeded("Run budget for Open-Meteo exhausted")
         delay = self.next_request - time.monotonic()
         if delay > 0:
             time.sleep(delay)
-        self.next_request = time.monotonic() + locations / WEIGHTED_CALLS_PER_SECOND
-        self.calls += locations
+        self.next_request = time.monotonic() + weight / self.calls_per_second
+        self.calls = total
 
 
 def fetch(params, budget):
@@ -157,8 +164,11 @@ def fetch(params, budget):
         + urllib.parse.urlencode(params)
     )
 
+    locations = params["latitude"].count(",") + 1
+    series = len(VARIABLES) * (params["models"].count(",") + 1)
+    weight = locations * max(1, series / 10)
     for attempt in range(4):
-        budget.reserve(params["latitude"].count(",") + 1)
+        budget.reserve(weight)
         try:
             request = urllib.request.Request(
                 url,
@@ -398,8 +408,89 @@ def close_forecast_cycle(staged, target, acquired):
     return counts
 
 
+def combined_station_rows(station, response):
+    hourly = response["hourly"]
+    times = [parse_utc(value) for value in hourly["time"]]
+    future = [(i, value) for i, value in enumerate(times) if value > NOW]
+    if len(times) != 96 or not future or any(end - start != timedelta(hours=1) for start, end in zip(times, times[1:])):
+        raise ValueError("Incomplete hourly timestamps")
+    rows = []
+    for model in MODELS:
+        series = [hourly[f"{variable}_{model}"] for variable in VARIABLES]
+        if any(len(values) != len(times) for values in series):
+            raise ValueError(f"Incomplete hourly series for {model}")
+        for index, valid in future:
+            temperature, precipitation, wind = [valid_number(values[index]) for values in series]
+            if None in (temperature, precipitation, wind):
+                raise ValueError(f"Missing forecast at {valid.isoformat()} for {model}")
+            rows.append({
+                **{name: station[name] for name in ("network", "station_id", "latitude", "longitude")},
+                "acquired_utc": NOW.isoformat(),
+                "model": model,
+                "valid_time_utc": valid.isoformat(),
+                "lead_hours": round((valid - NOW).total_seconds() / 3600, 3),
+                "temperature_2m_c": temperature,
+                "precipitation_mm": precipitation,
+                "wind_speed_10m_kmh": wind,
+            })
+    return rows
+
+
+def collect_combined(stations, writer, budget):
+    errors = []
+    recovered = 0
+    for index, batch in enumerate(chunks(stations, BATCH_SIZE), 1):
+        pending = batch
+        for attempt in range(2):
+            params = {
+                "latitude": ",".join(str(station["latitude"]) for station in pending),
+                "longitude": ",".join(str(station["longitude"]) for station in pending),
+                "hourly": ",".join(VARIABLES),
+                "models": ",".join(MODELS),
+                "forecast_days": 4,
+                "timezone": "GMT",
+            }
+            try:
+                payload = fetch(params, budget)
+            except ForecastQuotaExceeded:
+                raise
+            except (OSError, ValueError) as exc:
+                errors.append({"batch": index, "stations": len(pending), "error": str(exc)[:250]})
+                break
+            items = payload if isinstance(payload, list) else [payload]
+            responses = {}
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                location = item.get("location_id", 0)
+                if type(location) is not int or not 0 <= location < len(pending):
+                    continue
+                responses[location] = None if location in responses else item
+
+            missing = []
+            for location, station in enumerate(pending):
+                try:
+                    rows = combined_station_rows(station, responses[location])
+                except (KeyError, TypeError, ValueError):
+                    missing.append(station)
+                    continue
+                writer.writerows(rows)
+                recovered += int(attempt == 1)
+            if not missing:
+                break
+            pending = missing
+        else:
+            errors.append({"batch": index, "stations": len(pending), "error": "Incomplete combined response"})
+    return errors, recovered
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--combined", action="store_true")
+    args = parser.parse_args()
     stations = load_stations()
+    if args.combined and len(stations) > MAX_COMBINED_STATIONS:
+        raise ValueError(f"At most {MAX_COMBINED_STATIONS} stations in one combined run")
 
     target = OUTPUT / (
         f"forecasts_meteohub_{STAMP}.csv.gz"
@@ -410,10 +501,14 @@ def main():
     )
 
     counts = Counter()
-    budget = ForecastBudget()
+    budget = (
+        ForecastBudget(COMBINED_BUDGET, COMBINED_CALLS_PER_SECOND)
+        if args.combined else ForecastBudget()
+    )
     staged = target.with_suffix(".partial")
     errors = []
     diagnostics = {}
+    recovered = 0
 
     with gzip.open(
         staged,
@@ -429,7 +524,10 @@ def main():
 
         writer.writeheader()
 
-        for model in MODELS:
+        if args.combined:
+            errors, recovered = collect_combined(stations, writer, budget)
+
+        for model in ([] if args.combined else MODELS):
             model_stats = Counter()
             diagnostics[model] = model_stats
 
@@ -498,6 +596,8 @@ def main():
         "collection_started_utc": NOW.isoformat(),
         "acquired_utc": acquired.isoformat(),
         "weighted_api_calls_estimate": budget.calls,
+        "combined_request": args.combined,
+        "stations_recovered_after_partial_response": recovered,
         "data_source": "Open-Meteo (https://open-meteo.com/)",
         "stations": len(stations),
         "models": MODELS,
