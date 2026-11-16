@@ -20,11 +20,20 @@
     "data/observations/meteohub/request_5875753.jsonl",
     "data/observations/meteohub/request_5875754.jsonl",
     "data/observations/meteohub/request_5877923.jsonl",
-    "data/observations/meteohub/request_5877925.jsonl"
+    "data/observations/meteohub/request_5877925.jsonl",
+    "data/observations/meteohub/request_5884196.jsonl",
+    "data/observations/meteohub/request_5884199.jsonl",
+    "data/observations/meteohub/request_5884200.jsonl",
+    "data/observations/meteohub/request_5884202.jsonl",
+    "data/observations/meteohub/request_5884203.jsonl",
+    "data/observations/meteohub/request_5888661.jsonl",
+    "data/observations/meteohub/request_5888662.jsonl",
+    "data/observations/meteohub/request_5888663.jsonl",
+    "data/observations/meteohub/request_5888664.jsonl"
   ],
-  "source_lines": 483213,
-  "normalized_rows": 379262,
-  "stations": 1538,
+  "source_lines": 772375,
+  "normalized_rows": 617749,
+  "stations": 1539,
   "networks": [
     "agrmet",
     "arpafvg",
@@ -43,14 +52,14 @@
     "urbane"
   ],
   "quality_flags": {
-    "ok": 379262
+    "ok": 617749
   },
   "skipped_or_duplicate": {
-    "source_lines": 483213,
-    "unsupported_variable": 61647,
-    "duplicate_rows": 63627
+    "source_lines": 772375,
+    "unsupported_variable": 93074,
+    "duplicate_rows": 83690
   },
   "first_datetime_utc": "2026-11-11T00:00:00Z",
-  "last_datetime_utc": "2026-11-15T10:25:00Z",
+  "last_datetime_utc": "2026-11-16T08:06:00Z",
   "note": "Only B13011 precipitation is supported. No region is inferred from coordinates; QC is structural, not scientific validation."
 }

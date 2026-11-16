@@ -1,33 +1,37 @@
 {
-  "generated_utc": "2026-11-15T11:20:11.514586+00:00",
+  "generated_utc": "2026-11-16T10:04:39.296064+00:00",
   "requests_total": 20,
-  "requests_completed": 15,
-  "files_saved": 13,
-  "records_downloaded": 379120,
-  "requests_skipped": 2,
+  "requests_completed": 13,
+  "files_saved": 9,
+  "records_downloaded": 289162,
+  "requests_skipped": 4,
   "errors": [
     {
-      "request_id": 5875748,
+      "request_id": 5888665,
       "reason": "File oltre il limite di 50 MB"
     },
     {
-      "request_id": 5871033,
+      "request_id": 5888660,
+      "reason": "File oltre il limite di 50 MB"
+    },
+    {
+      "request_id": 5888658,
+      "reason": "File oltre il limite di 50 MB"
+    },
+    {
+      "request_id": 5884204,
       "reason": "File oltre il limite di 50 MB"
     }
   ],
   "saved_requests": [
-    5877925,
-    5877923,
-    5875754,
-    5875753,
-    5875752,
-    5875750,
-    5871031,
-    5871030,
-    5871028,
-    5871026,
-    5871024,
-    5867235,
-    5867234
+    5888664,
+    5888663,
+    5888662,
+    5888661,
+    5884203,
+    5884202,
+    5884200,
+    5884199,
+    5884196
   ]
 }
