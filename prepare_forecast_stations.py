@@ -126,7 +126,7 @@ def update_catalog(files, catalog, approved, lookup, now):
         station.update({field: len(recent[key][code]) for field, code in zip(HOUR_FIELDS, CODES)})
 
 
-def select_stations(catalog, legacy_keys, prior_keys, regions, now):
+def select_stations(catalog, legacy_keys, prior_keys, regions, now, max_stations=MAX_STATIONS):
     by_region = defaultdict(list)
     for key, station in catalog.items():
         if timestamp(station["last_observation_utc"]) >= now - RECENT:
@@ -152,12 +152,14 @@ def select_stations(catalog, legacy_keys, prior_keys, regions, now):
         before = len(selected)
         for key in sorted(by_region[name], key=rank):
             add(key)
-            if len(selected) - before == PER_REGION:
+            if len(selected) - before == PER_REGION or len(selected) == max_stations:
                 break
+        if len(selected) == max_stations:
+            return selected
 
     # Preserve active comparison points, including verified coastal sites present in the legacy list.
     for key in sorted((prior_keys | legacy_keys) & catalog.keys(), key=rank):
-        if len(selected) == MAX_STATIONS:
+        if len(selected) == max_stations:
             break
         row = catalog[key]
         if timestamp(row["last_observation_utc"]) >= now - RECENT:
@@ -165,7 +167,7 @@ def select_stations(catalog, legacy_keys, prior_keys, regions, now):
 
     # Fill the remaining budget evenly across regions with additional measurements.
     queues = {name: iter(sorted(by_region[name], key=rank)) for name in regions}
-    while queues and len(selected) < MAX_STATIONS:
+    while queues and len(selected) < max_stations:
         for name, queue in list(queues.items()):
             before = len(selected)
             for key in queue:
@@ -174,7 +176,7 @@ def select_stations(catalog, legacy_keys, prior_keys, regions, now):
                     break
             else:
                 del queues[name]
-            if len(selected) == MAX_STATIONS:
+            if len(selected) == max_stations:
                 break
     return selected
 
@@ -192,7 +194,10 @@ def main():
     parser.add_argument("observations", type=Path)
     parser.add_argument("--previous-catalog", type=Path)
     parser.add_argument("--additional-observations", type=Path)
+    parser.add_argument("--max-stations", type=int, default=MAX_STATIONS)
     args = parser.parse_args()
+    if args.max_stations < 1:
+        parser.error("--max-stations must be positive")
 
     files = sorted(args.observations.rglob("observations_clean.csv"))
     if args.additional_observations and args.additional_observations.is_file():
@@ -208,7 +213,7 @@ def main():
     boundaries = region_boundaries()
     now = datetime.now(timezone.utc)
     update_catalog(files, catalog, approved, region_lookup(boundaries), now)
-    selected = select_stations(catalog, legacy_keys, previous_keys, boundaries, now)
+    selected = select_stations(catalog, legacy_keys, previous_keys, boundaries, now, args.max_stations)
     if not selected:
         raise ValueError("No stations with recently verified measurements")
 

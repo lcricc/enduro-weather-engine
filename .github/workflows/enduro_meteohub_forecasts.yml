@@ -22,7 +22,7 @@ concurrency:
 jobs:
   meteohub-forecasts:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
 
     steps:
       - name: Checkout repository
@@ -32,6 +32,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Check daily Open-Meteo collection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          today=$(date -u +%F)
+          yesterday=$(date -u -d yesterday +%F)
+          runs=$(gh api --method GET --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/enduro_meteohub_forecasts.yml/runs" \
+            -f created=">=$yesterday" -f per_page=100 --jq '.workflow_runs[].id')
+          for run in $runs; do
+            started=$(gh api --method GET --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" \
+              -f filter=all -f per_page=100 | jq -r --arg today "$today" '
+              .jobs[].steps[] |
+              select(.name == "Collect forecasts from eight models") |
+              select(.conclusion != "skipped") |
+              select((.started_at // "") != "") |
+              select((.started_at[0:10] == $today) or ((.completed_at // "")[0:10] == $today)) |
+              .started_at')
+            if [[ -n "$started" ]]; then
+              echo "Open-Meteo collection already attempted today in run $run."
+              exit 1
+            fi
+          done
 
       - name: Find latest station inventory
         id: inventory
@@ -212,12 +238,14 @@ jobs:
               rm -- ./*.tar.gz
             )
           done
+          limit=$(python -c 'from collect_meteohub_forecasts import MAX_COMBINED_STATIONS; print(MAX_COMBINED_STATIONS)')
           python prepare_forecast_stations.py "$work/observations" \
             --previous-catalog "$previous" \
-            --additional-observations data/observations/meteohub/clean/observations_clean.csv
+            --additional-observations data/observations/meteohub/clean/observations_clean.csv \
+            --max-stations "$limit"
 
       - name: Collect forecasts from eight models
-        run: python collect_meteohub_forecasts.py
+        run: python collect_meteohub_forecasts.py --combined
 
       - name: Save forecast archive
         if: always()
