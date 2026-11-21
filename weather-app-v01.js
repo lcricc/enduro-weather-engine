@@ -1,10 +1,15 @@
 const el = id => document.getElementById(id);
-const periodSelect = el("periodSelect");
+const periods = el("periods");
+const legacyPeriod = el("periodSelect");
 const HOUR = 3600;
 const PERIOD_HOURS = 24;
 const OUTLOOK_HOURS = 72;
 const clock = new Intl.DateTimeFormat("it-IT", {timeZone:"Europe/Rome", hour:"2-digit", minute:"2-digit"});
 const dateHour = new Intl.DateTimeFormat("it-IT", {timeZone:"Europe/Rome", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit", timeZoneName:"short"});
+const day = new Intl.DateTimeFormat("it-IT", {timeZone:"Europe/Rome", day:"2-digit", month:"2-digit"});
+function intervalLabel(end) {
+  return dateHour.format((end-HOUR)*1000)+" – "+clock.format(end*1000);
+}
 const percent = new Intl.NumberFormat("it-IT", {style:"percent", minimumFractionDigits:1, maximumFractionDigits:1});
 let lat=42.5, lon=12.5, activeModels=[], forecastRows=[], generation=0, pending, config;
 let map, marker;
@@ -19,10 +24,8 @@ if (window.L) {
 
 function resetForecast() {
   activeModels=[]; forecastRows=[];
-  if (periodSelect) {
-    periodSelect.value="0";
-    periodSelect.disabled=true;
-  }
+  if (legacyPeriod) legacyPeriod.disabled=true;
+  if (periods) el("periodSummary").textContent="Scegli il periodo e premi Calcola previsione per il punto selezionato.";
   el("hourSelect").replaceChildren(new Option("Calcola prima una previsione",""));
   el("hourSelect").disabled=true;
   for (const id of ["temp","rain","wind","trange","prange","wrange","enduroVotes","enduroConsensus","enduroProbability"]) el(id).textContent="—";
@@ -94,26 +97,36 @@ function renderHour(time) {
   el("enduroInterval").textContent="Da "+dateHour.format((time-HOUR)*1000)+" a "+dateHour.format(time*1000)+".";
   el("enduroSource").textContent=signal?(row.fallback?"Ultimo calcolo completo salvato":"Dati acquisiti")+" il "+dateHour.format(signal.at*1000)+"."
     :row.n+"/8 previsioni di pioggia valide. Servono otto modelli dello stesso calcolo.";
-  el("temp").textContent=format(row.t)+"°";el("rain").textContent=format(row.p)+" mm";el("wind").textContent=format(row.w,0);
+  el("temp").textContent=format(row.t)+"°";el("rain").textContent=format(row.p)+" mm";el("wind").textContent=Number.isFinite(row.w)?format(row.w,0)+" km/h":"—";
   for (const [id,k,unit] of [["trange","t","°"],["prange","p"," mm"],["wrange","w"," km/h"]]) el(id).textContent=range(values.map(a=>a?.[k]),unit);
   el("agreement").textContent="Minimo e massimo previsti nell’ultimo calcolo per l’ora selezionata.";
   el("comparison").replaceChildren();
   config.models.forEach((m,i)=>{const a=values[i];addRow(el("comparison"),a?[m,format(a.t),format(a.p),format(a.w,0)]:[m,"Non disponibile","—","—"]);});
 }
 function renderPeriod() {
-  const offset=Number(periodSelect?.value ?? 0);
-  const rows=forecastRows.slice(offset,offset+PERIOD_HOURS);
+  const selected=periods?.querySelector("input:checked")?.value ?? legacyPeriod?.value ?? "0";
+  const rows=selected==="all" ? forecastRows : forecastRows.slice(Number(selected),Number(selected)+PERIOD_HOURS);
   if (!rows.length) return;
   const choices=el("hourSelect");
+  const previousTime=Number(choices.value);
+  const selectedTime=rows.find(row=>row.time===previousTime)?.time ?? rows[0].time;
   choices.replaceChildren();
   el("hours").replaceChildren();
   for (const row of rows) {
-    choices.add(new Option(dateHour.format((row.time-HOUR)*1000)+" – "+clock.format(row.time*1000),String(row.time)));
-    addRow(el("hours"),[dateHour.format(row.time*1000),format(row.t),format(row.p),format(row.w,0),
-      signalLabel(row)+(row.fallback?" · salvato":""),probabilityLabel(row)]);
+    choices.add(new Option(intervalLabel(row.time),String(row.time)));
+    const cells=[intervalLabel(row.time),format(row.t),format(row.p),format(row.w,0),signalLabel(row)+(row.fallback?" · salvato":"")];
+    if (periods) cells.push(row.signal ? row.signal.votes+"/8" : "—");
+    cells.push(probabilityLabel(row));
+    addRow(el("hours"),cells);
+  }
+  if (periods) {
+    const first=dateHour.format((rows[0].time-HOUR)*1000);
+    const last=dateHour.format(rows[rows.length-1].time*1000);
+    el("periodSummary").textContent=rows.length+" ore · dal "+first+" al "+last+" (ora italiana)";
   }
   choices.disabled=false;
-  renderHour(rows[0].time);
+  choices.value=String(selectedTime);
+  renderHour(selectedTime);
   renderCharts(rows);
 }
 async function calculate() {
@@ -151,7 +164,7 @@ async function calculate() {
     }
     if (!activeModels.some(Boolean) && !forecastRows.some(r=>r.signal)) throw Error("Nessun modello disponibile. Riprova tra poco.");
     saveHistory(key,additions,at);
-    if (periodSelect) periodSelect.disabled=false;
+    if (legacyPeriod) legacyPeriod.disabled=false;
     renderPeriod();
     el("models").textContent=activeModels.filter(Boolean).length+"/8 modelli disponibili nell’ultimo calcolo";
     el("status").textContent="Previsione elaborata per la posizione selezionata.";
@@ -166,7 +179,8 @@ async function calculate() {
 select({lat,lng:lon});
 el("locate").addEventListener("click",locateMe);
 el("run").addEventListener("click",calculate);
-periodSelect?.addEventListener("change",renderPeriod);
+periods?.addEventListener("change",renderPeriod);
+legacyPeriod?.addEventListener("change",renderPeriod);
 el("hourSelect").addEventListener("change",e=>renderHour(Number(e.target.value)));
 function locateMe(){const button=el("locate");if(!navigator.geolocation){el("status").textContent="Geolocalizzazione non supportata dal browser.";return}button.disabled=true;el("status").textContent="Ricerca della posizione GPS...";navigator.geolocation.getCurrentPosition(position=>{const p={lat:position.coords.latitude,lng:position.coords.longitude};select(p);map?.setView([p.lat,p.lng],14);el("status").textContent="Posizione GPS rilevata (precisione circa "+Math.round(position.coords.accuracy)+" m). Premi Calcola previsione.";button.disabled=false},error=>{const messages={1:"Permesso posizione negato. Abilita la localizzazione per il browser nelle impostazioni iPhone.",2:"Posizione non disponibile. Controlla GPS e rete.",3:"Tempo scaduto nella ricerca GPS. Riprova."};el("status").textContent=messages[error.code]||"Impossibile ottenere la posizione.";button.disabled=false},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
 function average(values){const v=values.filter(Number.isFinite);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null}function format(n,d=1){return Number.isFinite(n)?n.toFixed(d):"—"}function range(values,unit){const v=values.filter(Number.isFinite);return v.length?format(Math.min(...v))+"–"+format(Math.max(...v))+unit:"—"}function addRow(body,values){const tr=document.createElement("tr");for(const value of values){const td=document.createElement("td");td.textContent=value;tr.appendChild(td)}body.appendChild(tr)}
@@ -186,9 +200,12 @@ function makeChart(title,key,unit,color,period){const rows=period.filter(r=>Numb
     else drawSegment();
   }
   drawSegment();
-  for (const i of [0,6,12,18,23]) {
+  const lastIndex=period.length-1;
+  for (const step of [0,1,2,3,4]) {
+    const i=Math.round(step*lastIndex/4);
     const t=period[i].time;
-    node("text",{x:x(t),y:h-8,fill:"#bed0cc","font-size":11,"text-anchor":i===0?"start":i===23?"end":"middle"},clock.format(t*1000));
+    const label=period.length>24 ? day.format(t*1000)+" "+clock.format(t*1000) : clock.format(t*1000);
+    node("text",{x:x(t),y:h-8,fill:"#bed0cc","font-size":11,"text-anchor":i===0?"start":i===lastIndex?"end":"middle"},label);
   }
   wrap.appendChild(svg);const legend=document.createElement("div");legend.className="legend";legend.textContent=`Min ${format(Math.min(...values))} ${unit} · Max ${format(Math.max(...values))} ${unit} · Orari italiani`;wrap.appendChild(legend);return wrap}
 function renderCharts(rows){const c=el("charts");c.innerHTML="";c.appendChild(makeChart("Temperatura","t","°C","#ffb85c",rows));c.appendChild(makeChart("Precipitazioni","p","mm","#69bfff",rows));c.appendChild(makeChart("Vento","w","km/h","#63d4b3",rows))}
