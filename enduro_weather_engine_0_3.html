@@ -12,7 +12,13 @@
 <main>
 <div id="map"></div>
 <div class="panel"><strong id="location">Seleziona un punto sulla mappa</strong><p id="status">Tocca la mappa per calcolare la previsione.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="locate" type="button">⌖ La mia posizione</button><button id="run">Calcola previsione</button></div><div id="updated">Ultimo calcolo: non ancora eseguito</div></div>
-<div class="panel"><div class="sectionTitle">Previsione multimodello</div><p><small id="models">In attesa dei modelli</small></p><label for="hourSelect"><small>Ora italiana · intervallo di pioggia</small></label><select id="hourSelect" disabled><option>Calcola prima una previsione</option></select><div class="metrics" style="margin-top:14px"><div class="metric"><span>Temperatura</span><b id="temp">—</b></div><div class="metric"><span>Pioggia</span><b id="rain">—</b></div><div class="metric"><span>Vento</span><b id="wind">—</b></div></div></div>
+<div class="panel"><div class="sectionTitle">Previsione multimodello</div><p><small id="models">In attesa dei modelli</small></p><label for="periodSelect"><small>Periodo di previsione</small></label>
+<select id="periodSelect" disabled>
+  <option value="0">Prime 24 ore</option>
+  <option value="24">Da 24 a 48 ore</option>
+  <option value="48">Da 48 a 72 ore</option>
+</select>
+<label for="hourSelect"><small>Ora italiana · intervallo di pioggia</small></label><select id="hourSelect" disabled><option>Calcola prima una previsione</option></select><div class="metrics" style="margin-top:14px"><div class="metric"><span>Temperatura</span><b id="temp">—</b></div><div class="metric"><span>Pioggia</span><b id="rain">—</b></div><div class="metric"><span>Vento</span><b id="wind">—</b></div></div></div>
 <section class="panel" aria-labelledby="rainTitle">
   <div class="sectionTitle" id="rainTitle">ENDURO · Pioggia oraria</div>
   <p class="note" id="enduroInterval">Seleziona una località e premi Calcola previsione.</p>
@@ -22,13 +28,13 @@
     <div class="metric"><span>Modelli per la pioggia</span><b id="enduroVotes">—</b></div>
   </div>
   <p class="note" id="enduroSource"></p>
-  <p class="note">Ogni modello vota pioggia da 0,1 mm nell’ora. La probabilità deriva dalle misure italiane MeteoHub del 15–17 novembre 2026. Calibrazione sperimentale v0.1.</p>
+  <p class="note">Ogni modello vota pioggia da 0,1 mm nell’ora. La probabilità è calibrata sulle prime 24 ore con misure italiane MeteoHub del 15–17 novembre 2026. Oltre 24 ore il voto descrive la tendenza. Calibrazione sperimentale v0.1.</p>
 </section>
-<div class="panel"><div class="sectionTitle">Andamento delle prossime 24 ore</div><p class="note">Medie dei modelli disponibili. La pioggia in mm si riferisce all’intervallo che termina all’ora indicata.</p><div id="charts"><div class="empty">Calcola una previsione per visualizzare i grafici.</div></div></div>
+<div class="panel"><div class="sectionTitle">Andamento nel periodo scelto</div><p class="note">Medie dei modelli disponibili. La pioggia in mm si riferisce all’intervallo che termina all’ora indicata.</p><div id="charts"><div class="empty">Calcola una previsione per visualizzare i grafici.</div></div></div>
 <div class="panel"><div class="sectionTitle">Dati raccolti · GitHub</div><p class="note">Stato delle ultime esecuzioni e archivi pubblicati dal progetto. Questi dati NON sono le previsioni live Open-Meteo visualizzate sopra. Un workflow riuscito non dimostra da solo l'accuratezza scientifica.</p><div id="projectStatus" class="note">Caricamento stato progetto...</div><div id="projectReleases" class="note" style="margin-top:12px"></div><p class="note"><a href="https://github.com/lcricc/enduro-weather-engine/actions" target="_blank" rel="noopener noreferrer" style="color:#9ed9ce">Apri esecuzioni e report GitHub</a></p><button id="refreshProject" type="button">Aggiorna stato raccolte</button></div>
 <div class="panel"><div class="sectionTitle">Concordanza fra modelli</div><p class="note" id="agreement">In attesa dei dati.</p><div class="metrics"><div class="metric"><span>Intervallo temperatura</span><b id="trange">—</b></div><div class="metric"><span>Intervallo pioggia</span><b id="prange">—</b></div><div class="metric"><span>Intervallo vento</span><b id="wrange">—</b></div></div><p><small>Previsioni individuali dei modelli (anche non disponibili)</small></p><p id="modelErrors" class="note"></p><div class="scroll"><table><thead><tr><th>Modello</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr></thead><tbody id="comparison"></tbody></table></div></div>
-<div class="panel"><div class="sectionTitle">Prossime 24 ore</div><div class="scroll"><table><thead><tr><th>Fine ora</th><th>°C</th><th>Pioggia media mm</th><th>Vento km/h</th><th>Segnale ENDURO</th><th>Probabilità</th></tr></thead><tbody id="hours"></tbody></table></div></div>
+<div class="panel"><div class="sectionTitle">Previsione oraria del periodo scelto</div><div class="scroll"><table><thead><tr><th>Fine ora</th><th>°C</th><th>Pioggia media mm</th><th>Vento km/h</th><th>Segnale ENDURO</th><th>Probabilità</th></tr></thead><tbody id="hours"></tbody></table></div></div>
 <div class="panel"><p class="note">Versione sperimentale. Temperatura, vento e pioggia in mm mostrano la media dei modelli disponibili. La probabilità ENDURO usa la calibrazione MeteoHub. Gli intervalli indicano dispersione fra modelli, non probabilità o incertezza totale. L'ora dell'ultimo calcolo indica quando il telefono ha richiesto i dati, non l'emissione dei modelli. Non utilizzare questa pagina come unica fonte per decisioni di sicurezza in montagna.</p></div>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./weather-app-v01.js"></script></body></html>
+<script src="./weather-app-v01.js?v=72h"></script></body></html>
