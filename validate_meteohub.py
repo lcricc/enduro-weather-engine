@@ -1106,6 +1106,12 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
         OUT / "preliminary_metrics.csv",
         preliminary_metrics
     )
+    from enduro_rain_v01 import validate_issues
+
+    prospective = validate_issues(Path("historical/forecasts"), observations, PRECIPITATION_VARIABLE, now)
+    (OUT / "enduro_rain_v01.json").write_text(json.dumps(prospective, indent=2), encoding="utf-8")
+    print(f"ENDURO rain v0.1: {prospective['overall']['station_hours']} prospective station-hours")
+
     save_csv(OUT / "precipitation_occurrence.csv", rain_metrics, PRECIPITATION_FIELDS)
     write_precipitation_summary(rain_metrics)
 

@@ -1,0 +1,7 @@
+{
+  "version": "0.1",
+  "models": ["ecmwf_ifs025", "ecmwf_aifs025_single", "icon_seamless", "gfs_seamless", "meteofrance_seamless", "ukmo_seamless", "gem_seamless", "arpege_world"],
+  "threshold_mm": 0.1,
+  "total": [17459, 7504, 5684, 4270, 3479, 2985, 3164, 3290, 5012],
+  "wet": [94, 167, 322, 486, 696, 901, 1339, 1952, 3694]
+}

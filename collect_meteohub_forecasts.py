@@ -590,7 +590,11 @@ def main():
     counts = close_forecast_cycle(staged, target, acquired)
     if any(counts[model] == 0 for model in MODELS):
         errors.append({"error": "At least one model has no archived forecast rows"})
+    from enduro_rain_v01 import write_issue
+
+    rain_decisions = write_issue(target, acquired, OUTPUT / f"enduro_rain_v01_{STAMP}.json.gz")
     report = {
+        "enduro_rain_v01_station_hours": rain_decisions,
         "engine": "ENDURO WEATHER ENGINE",
         "version": "Forecast Collector V2.2",
         "collection_started_utc": NOW.isoformat(),

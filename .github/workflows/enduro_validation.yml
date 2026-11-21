@@ -53,14 +53,14 @@ jobs:
           gh release list \
             --repo "$GITHUB_REPOSITORY" \
             --limit 100 \
-            --json tagName \
-            --jq '.[].tagName' \
+            --json tagName,publishedAt \
+            --jq '.[] | [.tagName, .publishedAt] | @tsv' \
             > /tmp/enduro_tags.txt
 
           OBS_COUNT=0
           FC_COUNT=0
 
-          while IFS= read -r TAG; do
+          while IFS=$'\t' read -r TAG PUBLISHED; do
             case "$TAG" in
 
               meteohub-observations-*)
@@ -83,6 +83,7 @@ jobs:
               meteohub-forecasts-*)
                 DEST="historical/forecasts/$TAG"
                 mkdir -p "$DEST"
+                echo "$PUBLISHED" > "$DEST/published_at.txt"
 
                 gh release download "$TAG" \
                   --repo "$GITHUB_REPOSITORY" \
