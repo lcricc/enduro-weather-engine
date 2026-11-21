@@ -1,281 +1,42 @@
-
 <!doctype html>
 <html lang="it">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ENDURO WEATHER ENGINE</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ENDURO WEATHER ENGINE · Dashboard aggiornata</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#101719;color:#f4f7f6;font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif}
-header{padding:18px 16px;background:#182427;border-bottom:2px solid #00a58f}
-h1{font-size:19px;margin:0;letter-spacing:1px}
-small{color:#9eafad}
-main{max-width:900px;margin:auto;padding:14px}
-#map{height:340px;border-radius:12px;overflow:hidden}
-.panel{background:#1c292c;border-radius:12px;padding:16px;margin-top:14px}
-button{background:#00a58f;color:white;border:0;border-radius:9px;padding:12px 16px;font-weight:700;cursor:pointer}
-button:disabled{opacity:.5}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.metric{background:#253639;border-radius:10px;padding:12px;text-align:center}
-.metric b{display:block;font-size:20px;margin-top:8px}
-.metric span{font-size:12px;color:#b6c8c5}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{padding:10px 5px;border-bottom:1px solid #344548;text-align:center;white-space:nowrap}
-th{color:#9ed9ce}
-.scroll{overflow-x:auto}
-#status{font-size:13px;color:#b5c9c5}
-select{width:100%;padding:12px;border-radius:9px;background:#253639;color:white;border:1px solid #45605d;margin-top:10px}
-.note{font-size:12px;color:#b5c9c5;line-height:1.5}
+*{box-sizing:border-box}body{margin:0;background:#101719;color:#f4f7f6;font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif}header{padding:18px 16px;background:#182427;border-bottom:2px solid #00a58f}h1{font-size:19px;margin:0;letter-spacing:1px}small,.muted{color:#a9bcba}main{max-width:900px;margin:auto;padding:14px}#map{height:340px;border-radius:12px;overflow:hidden}.panel{background:#1c292c;border-radius:12px;padding:16px;margin-top:14px}button{background:#00a58f;color:white;border:0;border-radius:9px;padding:12px 16px;font-weight:700;cursor:pointer}button:disabled{opacity:.5}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{background:#253639;border-radius:10px;padding:12px;text-align:center}.metric b{display:block;font-size:20px;margin-top:8px}.metric span{font-size:12px;color:#b6c8c5}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:10px 5px;border-bottom:1px solid #344548;text-align:center;white-space:nowrap}th{color:#9ed9ce}.scroll{overflow-x:auto}#status{font-size:13px;color:#b5c9c5}select{width:100%;padding:12px;border-radius:9px;background:#253639;color:white;border:1px solid #45605d;margin-top:10px}.note{font-size:12px;color:#b5c9c5;line-height:1.5}.pill{display:inline-block;border:1px solid #68847d;border-radius:20px;padding:5px 9px;font-size:11px;color:#b9d7d0;margin-top:8px}.chart{width:100%;height:auto;display:block;margin-top:8px}.chartWrap{background:#253639;border-radius:10px;padding:12px;margin-top:12px}.chartTitle{font-size:13px;font-weight:700}.legend{font-size:11px;color:#b5c9c5;margin-top:6px}.empty{color:#93aaa6;font-size:12px;padding:18px 0}.sectionTitle{font-weight:700;font-size:16px}#updated{font-size:12px;color:#b5c9c5;margin-top:8px}
 </style>
 </head>
-<body>
-<header>
-<h1>ENDURO WEATHER ENGINE</h1>
-<small>Previsioni multimodello · Italia · Versione 0.2</small>
-</header>
+<body><header><h1>ENDURO WEATHER ENGINE</h1><small>Previsioni multimodello · Italia · Versione 0.3</small></header>
 <main>
 <div id="map"></div>
-<div class="panel">
-<strong id="location">Seleziona un punto sulla mappa</strong>
-<p id="status">Tocca la mappa per calcolare la previsione.</p>
-<button id="run">Calcola previsione</button>
-</div>
-<div class="panel">
-<strong>Previsione multimodello</strong>
-<p><small id="models">In attesa dei modelli</small></p>
-<label for="hourSelect"><small>Ora da analizzare</small></label>
-<select id="hourSelect" disabled>
-<option>Calcola prima una previsione</option>
-</select>
-<div class="metrics" style="margin-top:14px">
-<div class="metric"><span>Temperatura</span><b id="temp">—</b></div>
-<div class="metric"><span>Pioggia</span><b id="rain">—</b></div>
-<div class="metric"><span>Vento</span><b id="wind">—</b></div>
-</div>
-</div>
-<div class="panel">
-<strong>Concordanza fra modelli</strong>
-<p class="note" id="agreement">In attesa dei dati.</p>
-<div class="metrics">
-<div class="metric"><span>Intervallo temperatura</span><b id="trange">—</b></div>
-<div class="metric"><span>Intervallo pioggia</span><b id="prange">—</b></div>
-<div class="metric"><span>Intervallo vento</span><b id="wrange">—</b></div>
-</div>
-<p><small>Previsioni individuali dei modelli</small></p>
-<div class="scroll">
-<table>
-<thead>
-<tr><th>Modello</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr>
-</thead>
-<tbody id="comparison"></tbody>
-</table>
-</div>
-</div>
-<div class="panel">
-<strong>Prossime 24 ore</strong>
-<div class="scroll">
-<table>
-<thead>
-<tr><th>Ora</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr>
-</thead>
-<tbody id="hours"></tbody>
-</table>
-</div>
-</div>
-<div class="panel">
-<p class="note">
-Versione sperimentale. I valori rappresentano medie aritmetiche
-dei modelli disponibili, non ancora calibrate sulle osservazioni.
-Gli intervalli mostrano la dispersione fra modelli, non la
-probabilità o l'incertezza totale della previsione.
-Non utilizzare questa versione come unica fonte per decisioni
-di sicurezza in montagna.
-</p>
-</div>
+<div class="panel"><strong id="location">Seleziona un punto sulla mappa</strong><p id="status">Tocca la mappa per calcolare la previsione.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="locate" type="button">⌖ La mia posizione</button><button id="run">Calcola previsione</button></div><div id="updated">Ultimo calcolo: non ancora eseguito</div></div>
+<div class="panel"><div class="sectionTitle">Previsione multimodello</div><p><small id="models">In attesa dei modelli</small></p><label for="hourSelect"><small>Ora da analizzare</small></label><select id="hourSelect" disabled><option>Calcola prima una previsione</option></select><div class="metrics" style="margin-top:14px"><div class="metric"><span>Temperatura</span><b id="temp">—</b></div><div class="metric"><span>Pioggia</span><b id="rain">—</b></div><div class="metric"><span>Vento</span><b id="wind">—</b></div></div></div>
+<div class="panel"><div class="sectionTitle">Andamento delle prossime 24 ore</div><p class="note">Medie dei modelli disponibili. I grafici non rappresentano ancora l'algoritmo proprietario.</p><div id="charts"><div class="empty">Calcola una previsione per visualizzare i grafici.</div></div></div>
+<div class="panel"><div class="sectionTitle">Dati raccolti · GitHub</div><p class="note">Stato delle ultime esecuzioni e archivi pubblicati dal progetto. Questi dati NON sono le previsioni live Open-Meteo visualizzate sopra. Un workflow riuscito non dimostra da solo l'accuratezza scientifica.</p><div id="projectStatus" class="note">Caricamento stato progetto...</div><div id="projectReleases" class="note" style="margin-top:12px"></div><p class="note"><a href="https://github.com/lcricc/enduro-weather-engine/actions" target="_blank" rel="noopener noreferrer" style="color:#9ed9ce">Apri esecuzioni e report GitHub</a></p><button id="refreshProject" type="button">Aggiorna stato raccolte</button></div>
+<div class="panel"><div class="sectionTitle">ENDURO · Algoritmo proprietario</div><span class="pill">In fase di sviluppo · non validato</span><p class="note">Il sistema raccoglie previsioni e osservazioni per misurare gli errori dei singoli modelli. Il futuro algoritmo utilizzerà queste verifiche per produrre una previsione calibrata. Nessun valore proprietario viene mostrato finché non sarà effettivamente calcolato e verificato.</p><strong>Accuratezza scientifica</strong><p class="note">In attesa di confronti verificabili fra previsioni storiche e osservazioni successive. I risultati non sono ancora disponibili in questa pagina.</p></div>
+<div class="panel"><div class="sectionTitle">Concordanza fra modelli</div><p class="note" id="agreement">In attesa dei dati.</p><div class="metrics"><div class="metric"><span>Intervallo temperatura</span><b id="trange">—</b></div><div class="metric"><span>Intervallo pioggia</span><b id="prange">—</b></div><div class="metric"><span>Intervallo vento</span><b id="wrange">—</b></div></div><p><small>Previsioni individuali dei modelli</small></p><div class="scroll"><table><thead><tr><th>Modello</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr></thead><tbody id="comparison"></tbody></table></div></div>
+<div class="panel"><div class="sectionTitle">Prossime 24 ore</div><div class="scroll"><table><thead><tr><th>Ora</th><th>°C</th><th>Pioggia mm</th><th>Vento km/h</th></tr></thead><tbody id="hours"></tbody></table></div></div>
+<div class="panel"><p class="note">Versione sperimentale. I valori sono medie aritmetiche dei modelli disponibili, non calibrate sulle osservazioni. Gli intervalli indicano dispersione fra modelli, non probabilità o incertezza totale. L'ora dell'ultimo calcolo indica quando il telefono ha richiesto i dati, non l'emissione dei modelli. Non utilizzare questa pagina come unica fonte per decisioni di sicurezza in montagna.</p></div>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const modelNames=[
-"ecmwf_ifs025",
-"ecmwf_aifs025",
-"icon_seamless",
-"gfs_seamless",
-"meteofrance_seamless",
-"ukmo_seamless",
-"gem_seamless",
-"arpege_world"
-];
-const el=id=>document.getElementById(id);
-let lat=42.5,lon=12.5;
-let activeModels=[];
-let forecastRows=[];
-const map=L.map("map").setView([lat,lon],6);
-L.tileLayer(
-"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-{attribution:"© OpenStreetMap contributors",maxZoom:18}
-).addTo(map);
-const marker=L.marker([lat,lon]).addTo(map);
-function select(p){
-lat=p.lat;
-lon=p.lng;
-marker.setLatLng(p);
-el("location").textContent=
-`Lat ${lat.toFixed(4)} · Lon ${lon.toFixed(4)}`;
-el("status").textContent="Posizione selezionata. Calcola la previsione.";
-}
-map.on("click",e=>select(e.latlng));
-select({lat,lng:lon});
-function average(values){
-const valid=values.filter(Number.isFinite);
-return valid.length?
-valid.reduce((a,b)=>a+b,0)/valid.length:null;
-}
-function format(n,d=1){
-return Number.isFinite(n)?n.toFixed(d):"—";
-}
-function range(values,unit){
-const valid=values.filter(Number.isFinite);
-return valid.length?
-format(Math.min(...valid))+"–"+format(Math.max(...valid))+unit:"—";
-}
-function addRow(body,values){
-const tr=document.createElement("tr");
-for(const value of values){
-const td=document.createElement("td");
-td.textContent=value;
-tr.appendChild(td);
-}
-body.appendChild(tr);
-}
-async function getModel(model,latitude,longitude){
-const params=new URLSearchParams({
-latitude,
-longitude,
-hourly:"temperature_2m,precipitation,wind_speed_10m",
-models:model,
-forecast_days:"3",
-timezone:"Europe/Rome"
-});
-const response=await fetch(
-"https://api.open-meteo.com/v1/forecast?"+params
-);
-if(!response.ok)throw Error(model+" HTTP "+response.status);
-const data=await response.json();
-if(data.error)throw Error(data.reason||"Errore API");
-if(!data.hourly?.time)throw Error("Dati mancanti");
-return {model,hourly:data.hourly};
-}
-function modelAtTime(item,time){
-const h=item.hourly;
-const i=h.time.indexOf(time);
-if(i<0)return {model:item.model,t:null,p:null,w:null};
-return {
-model:item.model,
-t:h.temperature_2m?.[i],
-p:h.precipitation?.[i],
-w:h.wind_speed_10m?.[i]
-};
-}
-function renderHour(time){
-const values=activeModels.map(m=>modelAtTime(m,time));
-el("temp").textContent=
-format(average(values.map(v=>v.t)))+"°";
-el("rain").textContent=
-format(average(values.map(v=>v.p)))+" mm";
-el("wind").textContent=
-format(average(values.map(v=>v.w)),0);
-el("trange").textContent=range(values.map(v=>v.t),"°");
-el("prange").textContent=range(values.map(v=>v.p)," mm");
-el("wrange").textContent=range(values.map(v=>v.w)," km/h");
-el("agreement").textContent=
-"Minimo e massimo previsti dai modelli per l'ora selezionata. Un intervallo più stretto indica maggiore concordanza, non necessariamente maggiore accuratezza.";
-el("comparison").innerHTML="";
-for(const v of values){
-addRow(el("comparison"),[
-v.model,
-format(v.t),
-format(v.p),
-format(v.w,0)
-]);
-}
-}
-function currentItalianHour(){
-const parts=new Intl.DateTimeFormat("en-GB",{
-timeZone:"Europe/Rome",
-year:"numeric",month:"2-digit",day:"2-digit",
-hour:"2-digit",hourCycle:"h23"
-}).formatToParts(new Date());
-const part=type=>parts.find(x=>x.type===type)?.value;
-return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:00`;
-}
-async function calculate(){
-const button=el("run");
-button.disabled=true;
-const latitude=lat,longitude=lon;
-el("status").textContent="Interrogazione degli otto modelli...";
-el("models").textContent="Elaborazione in corso";
-el("hourSelect").disabled=true;
-el("comparison").innerHTML="";
-el("hours").innerHTML="";
-for(const id of ["temp","rain","wind","trange","prange","wrange"])
-el(id).textContent="—";
-try{
-const results=await Promise.allSettled(
-modelNames.map(m=>getModel(m,latitude,longitude))
-);
-activeModels=results
-.filter(r=>r.status==="fulfilled")
-.map(r=>r.value);
-if(!activeModels.length)
-throw Error("Nessun modello disponibile");
-const times=new Set();
-for(const m of activeModels)
-for(const t of m.hourly.time)times.add(t);
-const now=currentItalianHour();
-const ordered=[...times].filter(t=>t>=now).sort();
-const next=ordered.slice(0,24);
-if(!next.length)throw Error("Nessuna ora futura disponibile");
-forecastRows=next.map(time=>{
-const values=activeModels.map(m=>modelAtTime(m,time));
-return {
-time,
-t:average(values.map(v=>v.t)),
-p:average(values.map(v=>v.p)),
-w:average(values.map(v=>v.w))
-};
-});
-el("hourSelect").innerHTML="";
-for(const r of forecastRows){
-const option=document.createElement("option");
-option.value=r.time;
-option.textContent=r.time.replace("T"," · ");
-el("hourSelect").appendChild(option);
-}
-el("hourSelect").disabled=false;
-renderHour(forecastRows[0].time);
-for(const r of forecastRows){
-addRow(el("hours"),[
-r.time.slice(5,10)+" "+r.time.slice(11,16),
-format(r.t),format(r.p),format(r.w,0)
-]);
-}
-el("models").textContent=
-`${activeModels.length}/8 modelli disponibili`;
-const failed=results
-.filter(r=>r.status==="rejected").length;
-el("status").textContent=
-`Previsione elaborata · ${activeModels.length} modelli riusciti`+
-(failed?` · ${failed} non disponibili`:"");
-}catch(e){
-el("status").textContent="Errore: "+e.message;
-}finally{
-button.disabled=false;
-}
-}
-el("run").addEventListener("click",calculate);
-el("hourSelect").addEventListener("change",e=>renderHour(e.target.value));
-</script>
-</body>
-</html>
+const modelNames=["ecmwf_ifs025","ecmwf_aifs025","icon_seamless","gfs_seamless","meteofrance_seamless","ukmo_seamless","gem_seamless","arpege_world"];
+const el=id=>document.getElementById(id);let lat=42.5,lon=12.5,activeModels=[],forecastRows=[];
+const map=L.map("map").setView([lat,lon],6);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap contributors",maxZoom:18}).addTo(map);const marker=L.marker([lat,lon]).addTo(map);
+function select(p){lat=p.lat;lon=p.lng;marker.setLatLng(p);el("location").textContent=`Lat ${lat.toFixed(4)} · Lon ${lon.toFixed(4)}`;el("status").textContent="Posizione selezionata. Calcola la previsione."}map.on("click",e=>select(e.latlng));select({lat,lng:lon});
+function locateMe(){const button=el("locate");if(!navigator.geolocation){el("status").textContent="Geolocalizzazione non supportata dal browser.";return}button.disabled=true;el("status").textContent="Ricerca della posizione GPS...";navigator.geolocation.getCurrentPosition(position=>{const p={lat:position.coords.latitude,lng:position.coords.longitude};select(p);map.setView([p.lat,p.lng],14);el("status").textContent="Posizione GPS rilevata (precisione circa "+Math.round(position.coords.accuracy)+" m). Premi Calcola previsione.";button.disabled=false},error=>{const messages={1:"Permesso posizione negato. Abilita la localizzazione per il browser nelle impostazioni iPhone.",2:"Posizione non disponibile. Controlla GPS e rete.",3:"Tempo scaduto nella ricerca GPS. Riprova."};el("status").textContent=messages[error.code]||"Impossibile ottenere la posizione.";button.disabled=false},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}
+function average(values){const v=values.filter(Number.isFinite);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null}function format(n,d=1){return Number.isFinite(n)?n.toFixed(d):"—"}function range(values,unit){const v=values.filter(Number.isFinite);return v.length?format(Math.min(...v))+"–"+format(Math.max(...v))+unit:"—"}function addRow(body,values){const tr=document.createElement("tr");for(const value of values){const td=document.createElement("td");td.textContent=value;tr.appendChild(td)}body.appendChild(tr)}
+async function getModel(model,latitude,longitude){const params=new URLSearchParams({latitude,longitude,hourly:"temperature_2m,precipitation,wind_speed_10m",models:model,forecast_days:"3",timezone:"Europe/Rome"});const response=await fetch("https://api.open-meteo.com/v1/forecast?"+params);if(!response.ok)throw Error(model+" HTTP "+response.status);const data=await response.json();if(data.error)throw Error(data.reason||"Errore API");if(!data.hourly?.time)throw Error("Dati mancanti");return{model,hourly:data.hourly}}
+function modelAtTime(item,time){const h=item.hourly,i=h.time.indexOf(time);if(i<0)return{model:item.model,t:null,p:null,w:null};return{model:item.model,t:h.temperature_2m?.[i],p:h.precipitation?.[i],w:h.wind_speed_10m?.[i]}}
+function renderHour(time){const values=activeModels.map(m=>modelAtTime(m,time));el("temp").textContent=format(average(values.map(v=>v.t)))+"°";el("rain").textContent=format(average(values.map(v=>v.p)))+" mm";el("wind").textContent=format(average(values.map(v=>v.w)),0);el("trange").textContent=range(values.map(v=>v.t),"°");el("prange").textContent=range(values.map(v=>v.p)," mm");el("wrange").textContent=range(values.map(v=>v.w)," km/h");el("agreement").textContent="Minimo e massimo previsti dai modelli per l'ora selezionata. Un intervallo più stretto indica maggiore concordanza, non necessariamente maggiore accuratezza.";el("comparison").innerHTML="";for(const v of values)addRow(el("comparison"),[v.model,format(v.t),format(v.p),format(v.w,0)])}
+function currentItalianHour(){const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Rome",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",hourCycle:"h23"}).formatToParts(new Date());const part=type=>parts.find(x=>x.type===type)?.value;return`${part("year")}-${part("month")}-${part("day")}T${part("hour")}:00`}
+function makeChart(title,key,unit,color){const rows=forecastRows.filter(r=>Number.isFinite(r[key]));const wrap=document.createElement("div");wrap.className="chartWrap";const heading=document.createElement("div");heading.className="chartTitle";heading.textContent=title;wrap.appendChild(heading);if(rows.length<2){const p=document.createElement("p");p.className="empty";p.textContent="Dati insufficienti";wrap.appendChild(p);return wrap}const values=rows.map(r=>r[key]);let lo=Math.min(...values),hi=Math.max(...values);if(hi===lo){lo-=1;hi+=1}const pad=(hi-lo)*.12;lo-=pad;hi+=pad;const w=680,h=180,left=48,right=12,top=16,bottom=32,plotW=w-left-right,plotH=h-top-bottom;const x=i=>left+i*plotW/(rows.length-1),y=v=>top+(hi-v)/(hi-lo)*plotH;const ns="http://www.w3.org/2000/svg";const svg=document.createElementNS(ns,"svg");svg.setAttribute("viewBox",`0 0 ${w} ${h}`);svg.setAttribute("class","chart");svg.setAttribute("role","img");svg.setAttribute("aria-label",title+" nelle prossime 24 ore");function node(name,attrs,txt){const n=document.createElementNS(ns,name);for(const[k,v]of Object.entries(attrs))n.setAttribute(k,String(v));if(txt!==undefined)n.textContent=txt;svg.appendChild(n);return n}for(let i=0;i<=3;i++){const val=lo+(hi-lo)*i/3;node("line",{x1:left,x2:w-right,y1:y(val),y2:y(val),stroke:"#526563","stroke-width":.7});node("text",{x:4,y:y(val)+4,fill:"#bed0cc","font-size":11},format(val,1))}const points=rows.map((r,i)=>`${x(i)},${y(r[key])}`).join(" ");node("polyline",{points,fill:"none",stroke:color,"stroke-width":3,"stroke-linejoin":"round","stroke-linecap":"round"});for(const i of [0,6,12,18,23]){if(i>=rows.length)continue;node("text",{x:x(i),y:h-8,fill:"#bed0cc","font-size":11,"text-anchor":i===0?"start":i===rows.length-1?"end":"middle"},rows[i].time.slice(11,16))}wrap.appendChild(svg);const legend=document.createElement("div");legend.className="legend";legend.textContent=`Min ${format(Math.min(...values))} ${unit} · Max ${format(Math.max(...values))} ${unit} · Orari italiani`;wrap.appendChild(legend);return wrap}
+function renderCharts(){const c=el("charts");c.innerHTML="";c.appendChild(makeChart("Temperatura","t","°C","#ffb85c"));c.appendChild(makeChart("Precipitazioni","p","mm","#69bfff"));c.appendChild(makeChart("Vento","w","km/h","#63d4b3"))}
+async function calculate(){const button=el("run");button.disabled=true;const latitude=lat,longitude=lon;el("status").textContent="Interrogazione degli otto modelli...";el("models").textContent="Elaborazione in corso";el("hourSelect").disabled=true;el("comparison").innerHTML="";el("hours").innerHTML="";el("charts").innerHTML='<div class="empty">Elaborazione grafici in corso...</div>';for(const id of["temp","rain","wind","trange","prange","wrange"])el(id).textContent="—";try{const results=await Promise.allSettled(modelNames.map(m=>getModel(m,latitude,longitude)));activeModels=results.filter(r=>r.status==="fulfilled").map(r=>r.value);if(!activeModels.length)throw Error("Nessun modello disponibile");const times=new Set();for(const m of activeModels)for(const t of m.hourly.time)times.add(t);const now=currentItalianHour(),ordered=[...times].filter(t=>t>=now).sort(),next=ordered.slice(0,24);if(!next.length)throw Error("Nessuna ora futura disponibile");forecastRows=next.map(time=>{const values=activeModels.map(m=>modelAtTime(m,time));return{time,t:average(values.map(v=>v.t)),p:average(values.map(v=>v.p)),w:average(values.map(v=>v.w))}});el("hourSelect").innerHTML="";for(const r of forecastRows){const option=document.createElement("option");option.value=r.time;option.textContent=r.time.replace("T"," · ");el("hourSelect").appendChild(option)}el("hourSelect").disabled=false;renderHour(forecastRows[0].time);renderCharts();for(const r of forecastRows)addRow(el("hours"),[r.time.slice(5,10)+" "+r.time.slice(11,16),format(r.t),format(r.p),format(r.w,0)]);el("models").textContent=`${activeModels.length}/8 modelli disponibili`;const failed=results.filter(r=>r.status==="rejected").length;el("status").textContent=`Previsione elaborata · ${activeModels.length} modelli riusciti`+(failed?` · ${failed} non disponibili`:"");el("updated").textContent="Ultimo calcolo sul dispositivo: "+new Intl.DateTimeFormat("it-IT",{timeZone:"Europe/Rome",dateStyle:"short",timeStyle:"medium"}).format(new Date())+" (ora italiana)"}catch(e){el("status").textContent="Errore: "+e.message;el("charts").innerHTML='<div class="empty">Grafici non disponibili.</div>'}finally{button.disabled=false}}
+el("locate").addEventListener("click",locateMe);el("run").addEventListener("click",calculate);el("hourSelect").addEventListener("change",e=>renderHour(e.target.value));
+
+async function loadProjectStatus(){const status=el("projectStatus"),releases=el("projectReleases");status.textContent="Controllo esecuzioni GitHub...";releases.textContent="";const root="https://api.github.com/repos/lcricc/enduro-weather-engine";try{const paths=["meteohub_collect.yml","enduro_validation.yml"];const results=await Promise.allSettled(paths.map(async name=>{const response=await fetch(root+"/actions/workflows/"+name+"/runs?per_page=1",{cache:"no-store"});if(!response.ok)throw Error("HTTP "+response.status);const data=await response.json();return{name,run:data.workflow_runs?.[0]}}));status.replaceChildren();for(let i=0;i<results.length;i++){const line=document.createElement("p"),result=results[i],label=i===0?"Raccolta MeteoHub":"Validazione scientifica";if(result.status==="fulfilled"&&result.value.run){const run=result.value.run;line.append(document.createTextNode(label+": "+(run.conclusion||run.status)+" · "+new Intl.DateTimeFormat("it-IT",{dateStyle:"short",timeStyle:"short"}).format(new Date(run.created_at))+" · "));const a=document.createElement("a");a.href=run.html_url;a.textContent="Vedi esecuzione";a.target="_blank";a.rel="noopener noreferrer";a.style.color="#9ed9ce";line.append(a)}else line.textContent=label+": stato non disponibile";status.append(line)}const resp=await fetch(root+"/releases?per_page=30",{cache:"no-store"});if(!resp.ok)throw Error("Releases HTTP "+resp.status);const data=await resp.json();const groups=[["Osservazioni MeteoHub","meteohub-observations-"],["Previsioni storiche","meteohub-forecasts-"]];for(const[label,prefix]of groups){const item=data.find(x=>x.tag_name?.startsWith(prefix));const p=document.createElement("p");if(item){p.append(document.createTextNode(label+": archivio "+new Intl.DateTimeFormat("it-IT",{dateStyle:"short",timeStyle:"short"}).format(new Date(item.published_at||item.created_at))+" · "));const a=document.createElement("a");a.href=item.html_url;a.textContent="Apri archivio";a.target="_blank";a.rel="noopener noreferrer";a.style.color="#9ed9ce";p.append(a)}else p.textContent=label+": nessun archivio trovato nelle ultime 30 releases";releases.append(p)}const p=document.createElement("p");p.textContent="Le metriche di accuratezza non sono esposte finché non esiste un report verificato accessibile alla pagina.";releases.append(p)}catch(e){releases.textContent="Impossibile consultare gli archivi GitHub: "+e.message+". I dati non vengono sostituiti con valori simulati."}}
+el("refreshProject").addEventListener("click",loadProjectStatus);loadProjectStatus();
+</script></body></html>
