@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/enduro_validation.yml
+      - merge_historical_observations.py
       - validate_meteohub.py
       - meteohub_rain_recovery.py
   workflow_run:
@@ -27,7 +28,7 @@ jobs:
   validate:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -75,6 +76,7 @@ jobs:
                 for FILE in "$DEST"/*.tar.gz; do
                   test -f "$FILE" || continue
                   tar -xzf "$FILE" -C "$DEST"
+                  rm -- "$FILE"
                 done
 
                 OBS_COUNT=$((OBS_COUNT + 1))
@@ -93,6 +95,7 @@ jobs:
                 for FILE in "$DEST"/*.tar.gz; do
                   test -f "$FILE" || continue
                   tar -xzf "$FILE" -C "$DEST"
+                  rm -- "$FILE"
                 done
 
                 FC_COUNT=$((FC_COUNT + 1))
@@ -110,77 +113,7 @@ jobs:
       - name: Merge historical observations
         shell: bash
         run: |
-          python - <<'PY'
-          import csv
-          from pathlib import Path
-
-          files = sorted(
-              Path("historical/observations").rglob(
-                  "observations_clean.csv"
-              )
-          )
-
-          if not files:
-              raise RuntimeError("No historical observations")
-
-          output = Path(
-              "data/observations/meteohub/clean/"
-              "observations_clean.csv"
-          )
-
-          seen = set()
-          total = 0
-          unique = 0
-          fields = None
-
-          with output.open(
-              "w", newline="", encoding="utf-8"
-          ) as destination:
-
-              writer = None
-
-              for path in files:
-                  with path.open(
-                      newline="", encoding="utf-8-sig"
-                  ) as source:
-
-                      reader = csv.DictReader(source)
-
-                      if fields is None:
-                          fields = reader.fieldnames
-                          if not fields:
-                              raise ValueError(
-                                  "Missing CSV header"
-                              )
-                          writer = csv.DictWriter(
-                              destination,
-                              fieldnames=fields
-                          )
-                          writer.writeheader()
-
-                      if reader.fieldnames != fields:
-                          raise ValueError(
-                              f"CSV schema mismatch: {path}"
-                          )
-
-                      for row in reader:
-                          total += 1
-                          key = tuple(
-                              row.get(field, "")
-                              for field in fields
-                          )
-
-                          if key in seen:
-                              continue
-
-                          seen.add(key)
-                          writer.writerow(row)
-                          unique += 1
-
-          print("Observation files:", len(files))
-          print("Total rows:", total)
-          print("Unique rows:", unique)
-          PY
+          /usr/bin/time -v python merge_historical_observations.py
 
       - name: Prepare historical forecasts
         shell: bash
