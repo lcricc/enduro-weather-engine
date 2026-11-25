@@ -9,6 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 CONFIG = json.loads(Path(__file__).with_name("rain-v01.json").read_text())
+BASELINE = json.loads(Path(__file__).with_name("rain-baseline-v01.json").read_text())
 UTC = timezone.utc
 ROME = ZoneInfo("Europe/Rome")
 HOUR = timedelta(hours=1)
@@ -25,7 +26,7 @@ def write_issue(source, acquired, destination):
             "network", "station_id", "model", "valid_time_utc", "precipitation_mm"))
         for row in reader:
             start = parse(row[end]) - HOUR
-            if not acquired < start <= acquired + 24 * HOUR:
+            if not (acquired < start and start + HOUR <= acquired + 24 * HOUR):
                 continue
             bit = bits.get(row[model])
             if bit is None:
@@ -50,7 +51,7 @@ def write_issue(source, acquired, destination):
         if mask == 255 and valid and recorded < start:
             p = (CONFIG["wet"][votes] + 1) / (CONFIG["total"][votes] + 2)
             predictions.append([network, station, int(start.timestamp()), votes, p, votes >= 5, votes >= 6])
-    payload = {"version": CONFIG["version"], "acquired_utc": acquired.isoformat(),
+    payload = {"version": CONFIG["version"], "calibration_id": CONFIG.get("calibration", {}).get("id"), "acquired_utc": acquired.isoformat(),
                "recorded_utc": recorded.isoformat(), "predictions": predictions}
     temp = destination.with_suffix(".tmp")
     with gzip.open(temp, "wt", encoding="utf-8") as out:
@@ -60,9 +61,10 @@ def write_issue(source, acquired, destination):
 
 
 def scores(pairs):
-    result = {"station_hours": len(pairs), "brier": None}
+    result = {"station_hours": len(pairs), "brier": None, "brier_reference_v01": None}
     if pairs:
-        result["brier"] = sum((p-wet)**2 for p, _, _, wet in pairs)/len(pairs)
+        result["brier"] = sum((row[0]-row[3])**2 for row in pairs)/len(pairs)
+        result["brier_reference_v01"] = sum((row[4]-row[3])**2 for row in pairs)/len(pairs)
     for index, name in ((1, "5_of_8"), (2, "6_of_8")):
         hits = sum(bool(row[index]) and row[3] for row in pairs)
         misses = sum(not row[index] and row[3] for row in pairs)
@@ -93,18 +95,22 @@ def validate_issues(root, observations, variable, now):
             key = network, station, start + HOUR, variable
             previous = best.get(key)
             if previous is None or acquired > previous[0]:
-                best[key] = (acquired, probability, signal5, signal6)
+                best[key] = (acquired, probability, signal5, signal6, votes, issue.get("calibration_id") or "v0.1-initial")
 
     daily = {}
+    by_calibration = {}
     all_pairs = []
-    for key, (_, p, signal5, signal6) in best.items():
+    for key, (_, p, signal5, signal6, votes, calibration_id) in best.items():
         if key not in observations:
             continue
         wet = observations[key] >= CONFIG["threshold_mm"]
-        pair = (p, signal5, signal6, wet)
+        reference = (BASELINE["wet"][votes]+1)/(BASELINE["total"][votes]+2)
+        pair = (p, signal5, signal6, wet, reference)
         day = (key[2]-HOUR).astimezone(ROME).date().isoformat()
         daily.setdefault(day, []).append(pair)
+        by_calibration.setdefault(calibration_id, []).append(pair)
         all_pairs.append(pair)
     return {"version": CONFIG["version"], "archived_cycles": seen,
             "elapsed_station_hours": len(best), "awaiting_measurement": len(best)-len(all_pairs),
+            "by_calibration": {key: scores(rows) for key, rows in by_calibration.items()},
             "overall": scores(all_pairs), "days": {day: scores(daily[day]) for day in sorted(daily)}}

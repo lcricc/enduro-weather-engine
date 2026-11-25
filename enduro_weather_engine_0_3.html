@@ -48,7 +48,7 @@ h2.sectionTitle{margin:0}#periods{border:0;padding:0;margin:0 0 10px;min-width:0
     <dl>
       <dt>Pioggia media (mm)</dt><dd>È la quantità di precipitazione prevista nell’ora, in media fra i modelli disponibili. Un millimetro equivale a un litro per metro quadrato.</dd>
       <dt>Modelli per la pioggia</dt><dd>Ogni modello vota pioggia se prevede almeno 0,1 mm nell’ora. Con almeno 5 voti su 8 compare «Pioggia», con meno di 5 compare «Asciutto». Anche con 4 voti alcuni modelli prevedono pioggia.</dd>
-      <dt>Probabilità oraria ENDURO (%)</dt><dd>Nelle prime 24 ore stimiamo la probabilità usando le misure di stazioni italiane del 15–17 novembre 2026 e il numero di voti. La stima è preliminare. Da 24 a 72 ore mostriamo il voto come tendenza. «Dati insufficienti» indica che manca un confronto completo per quell’ora.</dd>
+      <dt>Probabilità oraria ENDURO (%)</dt><dd>Entro 24 ore stimiamo la probabilità dalla frequenza di pioggia osservata nelle stazioni italiane con lo stesso numero di voti, su tutto lo storico confrontabile. <span id="calibrationSample"></span> La stima è preliminare. Da 24 a 72 ore mostriamo il voto come tendenza. «Dati insufficienti» indica che manca un confronto completo per quell’ora.</dd>
       <dt>Temperatura (°C) e vento (km/h)</dt><dd>I valori principali sono le medie dei modelli disponibili. In «Concordanza fra modelli» trovi il minimo e il massimo. Più sono distanti, più i modelli divergono.</dd>
     </dl>
   </details>
@@ -61,4 +61,4 @@ h2.sectionTitle{margin:0}#periods{border:0;padding:0;margin:0 0 10px;min-width:0
 <div class="panel"><p class="note">Versione sperimentale. Temperatura, vento e pioggia in mm mostrano la media dei modelli disponibili. La probabilità ENDURO usa la calibrazione MeteoHub. Gli intervalli indicano dispersione fra modelli, non probabilità o incertezza totale. L'ora dell'ultimo calcolo indica quando il telefono ha richiesto i dati, non l'emissione dei modelli. Non utilizzare questa pagina come unica fonte per decisioni di sicurezza in montagna.</p></div>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./weather-app-v01.js?v=72h-vista2"></script></body></html>
+<script src="./weather-app-v01.js?v=storico-1"></script></body></html>

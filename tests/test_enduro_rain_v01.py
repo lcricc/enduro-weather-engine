@@ -39,12 +39,14 @@ class RainForecastTest(unittest.TestCase):
                     p=json.load(f)["predictions"][0]
                     self.assertEqual(p[3],wet_models)
                     self.assertEqual(p[4],(CONFIG["wet"][wet_models]+1)/(CONFIG["total"][wet_models]+2))
-            issue(1,start-24*hour,now,3)
+            issue(1,start+hour-24*hour,now,3)
             issue(2,now,now,5)
             issue(3,now+timedelta(seconds=1),start,8)
             obs={("net","complete",start+hour,"rain"):0.1}
             result=validate_issues(root,obs,"rain",start+hour)
             self.assertEqual(result["overall"]["station_hours"],1)
+            expected = ((901+1)/(2985+2)-1)**2
+            self.assertAlmostEqual(result["overall"]["brier_reference_v01"],expected)
             self.assertEqual(result["overall"]["5_of_8"]["hits"],1)
             self.assertEqual(result["overall"]["6_of_8"]["misses"],1)
             self.assertEqual(validate_issues(root,{},"rain",start+hour)["awaiting_measurement"],1)
