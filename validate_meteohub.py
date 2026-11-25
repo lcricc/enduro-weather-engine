@@ -18,6 +18,8 @@ import gzip
 import json
 import math
 import os
+import threading
+import shutil
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -562,6 +564,41 @@ def save_csv(path, metrics, fields=FIELDS):
         writer.writerows(metrics)
 
 
+_validation_phase = "Avvio"
+
+
+def mark_phase(name):
+    global _validation_phase
+    _validation_phase = name
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"[fase] {name}", flush=True)
+
+
+def memory_mib(path, field):
+    try:
+        for line in Path(path).read_text().splitlines():
+            if line.startswith(field + ":"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return "n/d"
+
+
+def monitor_resources(stop, interval=30):
+    while not stop.is_set():
+        try:
+            disk = shutil.disk_usage(".").free // (1024 ** 2)
+        except OSError:
+            disk = "n/d"
+        available = memory_mib("/proc/meminfo", "MemAvailable")
+        resident = memory_mib("/proc/self/status", "VmRSS")
+        peak = memory_mib("/proc/self/status", "VmHWM")
+        print(f"[risorse] {datetime.now(timezone.utc).isoformat()} | {_validation_phase} | "
+              f"RAM disponibile={available} MiB | RAM processo={resident} MiB | "
+              f"picco processo={peak} MiB | disco libero={disk} MiB", flush=True)
+        stop.wait(interval)
+
+
 def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
     OUT.mkdir(
         parents=True,
@@ -588,10 +625,12 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
 
     now = now or datetime.now(timezone.utc)
     gaps = {}
+    mark_phase("Lettura e aggregazione delle osservazioni")
     observations, obs_stats = load_observations(
         approved, time_tolerance=time_tolerance, include_precipitation=True,
         recovery_gaps=gaps, now=now
     )
+    mark_phase("Indicizzazione delle osservazioni")
     nearby_observations = index_nearby_observations(observations)
 
     latest_observation = max(
@@ -618,6 +657,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
     model_diagnostics = defaultdict(Counter)
 
     for path in forecast_files:
+        mark_phase(f"Confronto con le previsioni di {path.name}")
 
         with gzip.open(
             path,
@@ -825,6 +865,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
                         f"{variable}_matched"
                     ] += 1
 
+    mark_phase("Raggruppamento dei confronti")
     events = defaultdict(dict)
 
     for (
@@ -852,6 +893,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
             "unique_pairs"
         ] += 1
 
+    mark_phase("Confronto degli otto modelli")
     official_errors = defaultdict(list)
     exact_time_errors = defaultdict(list)
     preliminary_errors = defaultdict(list)
@@ -923,11 +965,13 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
                 ]
                 precipitation_counts[(model, bucket)][outcome] += 1
 
+    mark_phase("Calcolo delle metriche")
     metrics = calculate_metrics(
         official_errors
     )
     rain_metrics = precipitation_metrics(precipitation_counts)
 
+    mark_phase("Piano di recupero pioggia")
     plan = recovery_plan(
         gaps, gap_forecasts, gap_coordinates, verified_rain_stations, all_models
     )
@@ -1108,6 +1152,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
     )
     from enduro_rain_v01 import validate_issues
 
+    mark_phase("Validazione prospettica della pioggia")
     prospective = validate_issues(Path("historical/forecasts"), observations, PRECIPITATION_VARIABLE, now)
     (OUT / "enduro_rain_v01.json").write_text(json.dumps(prospective, indent=2), encoding="utf-8")
     print(f"ENDURO rain v0.1: {prospective['overall']['station_hours']} prospective station-hours")
@@ -1134,4 +1179,14 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
 
 
 if __name__ == "__main__":
-    validate()
+    stop = threading.Event()
+    monitor = None
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        monitor = threading.Thread(target=monitor_resources, args=(stop,), daemon=True)
+        monitor.start()
+    try:
+        validate()
+    finally:
+        stop.set()
+        if monitor is not None:
+            monitor.join()
