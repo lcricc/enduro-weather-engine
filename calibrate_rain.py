@@ -179,9 +179,11 @@ def update(config, daily):
 def load_archive(entry, source):
     import subprocess
 
+    # Release assets use octet-stream content negotiation. Actions ZIP endpoints
+    # instead expect the default GitHub API media type and return a redirect.
+    headers = [] if source.suffix == ".zip" else ["-H", "Accept: application/octet-stream"]
     with source.open("wb") as out:
-        subprocess.run(["gh", "api", "-H", "Accept: application/octet-stream", entry["url"]],
-                       stdout=out, check=True)
+        subprocess.run(["gh", "api", *headers, entry["url"]], stdout=out, check=True)
     with source.open("rb") as saved:
         if hashlib.file_digest(saved, "sha256").hexdigest() != entry["key"]:
             raise ValueError(f"Archive checksum mismatch: {source}")
