@@ -1,0 +1,53 @@
+name: ENDURO Historical Rain Calibration
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '35 6 * * *'
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/rain_learning.yml
+      - calibrate_rain.py
+      - rain_learning_sources.py
+      - meteohub_approved_metadata.json
+      - validate_meteohub.py
+      - data/geography/**
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: enduro-historical-rain-calibration
+  cancel-in-progress: false
+jobs:
+  learn:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install duckdb==1.4.3
+      - uses: actions/cache@v4
+        with:
+          path: .rain-cache/*.parquet
+          key: rain-${{ hashFiles('calibrate_rain.py', 'meteohub_approved_metadata.json') }}-${{ github.run_id }}
+          restore-keys: |
+            rain-${{ hashFiles('calibrate_rain.py', 'meteohub_approved_metadata.json') }}-
+      - name: Calibrate from all available station hours
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python rain_learning_sources.py
+      - name: Publish versioned calibration and preserve partial-run evidence
+        run: |
+          set -euo pipefail
+          git add rain-v01.json data/rain-learning/
+          git diff --cached --quiet && exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Aggiorna la calibrazione ENDURO sullo storico MeteoHub'
+          git pull --rebase origin main
+          git push origin HEAD:main

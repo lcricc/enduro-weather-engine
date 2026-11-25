@@ -59,7 +59,7 @@ async function getModel(model, latitude, longitude, signal) {
   });
   return {model,points};
 }
-const cachePrefix="enduro:rain:0.1:";
+const cachePrefix="enduro:rain:history2:";
 function readHistory(key) {
   try {return JSON.parse(localStorage.getItem(key)) || {};} catch {return {};}
 }
@@ -75,7 +75,7 @@ function saveHistory(key, records, now) {
     localStorage.setItem(key,JSON.stringify(Object.fromEntries(Object.entries(merged).filter(([end])=>Number(end)>now))));
   } catch { /* Rendering remains available with browser storage disabled. */ }
 }
-function eligible(at,start) {return Number.isFinite(at) && at<start && start-at<=24*HOUR;}
+function eligible(at,start) {return Number.isFinite(at) && at<start && start+HOUR-at<=24*HOUR;}
 function probability(votes) {return (config.wet[votes]+1)/(config.total[votes]+2);}
 function signalLabel(row) {
   if (!row.signal) return "Dati insufficienti";
@@ -84,7 +84,7 @@ function signalLabel(row) {
 }
 function probabilityLabel(row) {
   if (!row.signal) return "—";
-  return row.outlook ? "Non calibrata" : percent.format(probability(row.signal.votes));
+  return row.outlook ? "Non calibrata" : percent.format(row.signal.probability);
 }
 function renderHour(time) {
   const row=forecastRows.find(r=>r.time===time);
@@ -136,7 +136,21 @@ async function calculate() {
   const latitude=lat, longitude=lon, key=cachePrefix+lat+","+lon;
   resetForecast();el("run").disabled=true;el("status").textContent="Caricamento delle previsioni…";
   try {
-    if (!config) config=await fetchJSON("./rain-v01.json",ctl.signal);
+    // Pages can serve a bundled snapshot between deployments. Read the current
+    // version from main on the official viewer and show its actual sample dates.
+    const live = location.hostname==="lcricc.github.io";
+    const table = live ? "https://raw.githubusercontent.com/lcricc/enduro-weather-engine/main/rain-v01.json" : "./rain-v01.json";
+    let latest;
+    try { latest=await fetchJSON(table,ctl.signal); }
+    catch(error) {
+      if (!live || ctl.signal.aborted) throw error;
+      latest=await fetchJSON("./rain-v01.json",ctl.signal);
+    }
+    if (request!==generation) return;
+    config=latest;
+    const c=config.calibration;
+    if (c) el("calibrationSample").textContent="Campione dal "+c.from.split("-").reverse().join("/")+
+      " al "+c.through.split("-").reverse().join("/")+" · "+c.station_hours.toLocaleString("it-IT")+" ore-stazione.";
     if (request!==generation) return;
     const results=await Promise.allSettled(config.models.map(m=>getModel(m,latitude,longitude,ctl.signal)));
     if (request!==generation) return;
@@ -152,7 +166,8 @@ async function calculate() {
       let signal=null, fallback=false;
       const outlook=!eligible(at,start);
       if (rain.length===8) {
-        signal={votes:rain.filter(p=>p>=config.threshold_mm).length,at};
+        const votes=rain.filter(p=>p>=config.threshold_mm).length;
+        signal={votes,at,probability:probability(votes)};
         if (!outlook) additions[time]=signal;
       } else if (!outlook) {
         const old=history[time];
