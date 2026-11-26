@@ -16,7 +16,11 @@ V3.2:
 import csv
 import gzip
 import json
+import marshal
 import math
+import tempfile
+from array import array
+from contextlib import ExitStack
 import os
 import threading
 import shutil
@@ -646,7 +650,12 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
     diagnostics = Counter(
         complete_precipitation_events=0, complete_wet_precipitation_events=0
     )
-    candidates = defaultdict(list)
+    # Each station belongs to one partition across all forecast files and cycles.
+    station_ids = {}
+    issue_ids = {}
+    variable_ids = {name: i for i, name in enumerate(FORECAST_VARIABLES)}
+    model_names = sorted(OFFICIAL_MODELS)
+    model_ids = {name: i for i, name in enumerate(model_names)}
     gap_forecasts = defaultdict(Counter)
     gap_coordinates = {}
     verified_rain_stations = set()
@@ -656,314 +665,307 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
 
     model_diagnostics = defaultdict(Counter)
 
-    for path in forecast_files:
-        mark_phase(f"Confronto con le previsioni di {path.name}")
-
-        with gzip.open(
-            path,
-            "rt",
-            encoding="utf-8",
-            newline=""
-        ) as file:
-
-            for row in csv.DictReader(file):
-                diagnostics["forecast_rows"] += 1
-
-                model = (
-                    row.get("model") or ""
-                ).strip()
-
-                # Preserve historical files but do not
-                # use the obsolete AIFS identifier.
-                if model in LEGACY_MODELS:
-                    diagnostics[
-                        "legacy_rows_excluded"
-                    ] += 1
-                    continue
-
-                if model not in OFFICIAL_MODELS:
-                    diagnostics[
-                        "unknown_model_rows"
-                    ] += 1
-                    continue
-
-                model_diagnostics[model][
-                    "forecast_rows"
-                ] += 1
-
-                issue = timestamp(
-                    row.get("acquired_utc")
-                )
-
-                valid = timestamp(
-                    row.get("valid_time_utc")
-                )
-
-                if (
-                    not issue
-                    or not valid
-                    or valid <= issue
-                ):
-                    diagnostics[
-                        "invalid_forecast_time"
-                    ] += 1
-
-                    model_diagnostics[model][
-                        "invalid_forecast_time"
-                    ] += 1
-                    continue
-
-                if (
-                    valid.minute
-                    or valid.second
-                    or valid.microsecond
-                ):
-                    diagnostics[
-                        "non_hourly_forecast"
-                    ] += 1
-
-                    model_diagnostics[model][
-                        "non_hourly_forecast"
-                    ] += 1
-                    continue
-
-                hours = (
-                    valid - issue
-                ).total_seconds() / 3600
-
-                bucket = lead_bucket(hours)
-
-                if bucket is None:
-                    diagnostics[
-                        "outside_lead_window"
-                    ] += 1
-
-                    model_diagnostics[model][
-                        "outside_lead_window"
-                    ] += 1
-                    continue
-
-                network = (
-                    row.get("network") or ""
-                ).strip()
-
-                station = (
-                    row.get("station_id") or ""
-                ).strip()
-
-                if not network or not station:
-                    diagnostics[
-                        "missing_forecast_station"
-                    ] += 1
-
-                    model_diagnostics[model][
-                        "missing_forecast_station"
-                    ] += 1
-                    continue
-
-                for variable in FORECAST_VARIABLES:
-
-                    predicted = number(
-                        row.get(variable)
-                    )
-
-                    if predicted is None or (
-                        variable == PRECIPITATION_VARIABLE and predicted < 0
-                    ):
-                        diagnostics[
-                            "missing_prediction_value"
-                        ] += 1
-
-                        model_diagnostics[model][
-                            f"{variable}_missing"
-                        ] += 1
-                        continue
-
-                    if (
-                        variable == PRECIPITATION_VARIABLE
-                        and issue > valid - HOUR
-                    ):
-                        diagnostics["precipitation_already_started"] += 1
-                        model_diagnostics[model]["precipitation_already_started"] += 1
-                        continue
-
-                    model_diagnostics[model][
-                        f"{variable}_valid"
-                    ] += 1
-
-                    obs_key = (
-                        network,
-                        station,
-                        valid,
-                        variable
-                    )
-
-                    if obs_key in gaps:
-                        gap_forecasts[(issue, obs_key)][model] += 1
-                        latitude = number(row.get("latitude"))
-                        longitude = number(row.get("longitude"))
-                        if (
-                            latitude is not None and -90 <= latitude <= 90
-                            and longitude is not None and -180 <= longitude <= 180
-                        ):
-                            gap_coordinates.setdefault(obs_key, (latitude, longitude))
-
-                    match = match_observation(
-                        obs_key, issue, now, observations, nearby_observations
-                    )
-                    if match is None:
-
-                        diagnostics["unmatched"] += 1
-
-                        model_diagnostics[model][
-                            f"{variable}_unmatched"
-                        ] += 1
-
-                        if valid > now:
-                            diagnostics[
-                                "forecast_valid_time_in_future"
-                            ] += 1
-
-                            model_diagnostics[model][
-                                "future"
-                            ] += 1
-
-                        elif (
-                            latest_observation is not None
-                            and valid > latest_observation
-                        ):
-                            diagnostics[
-                                "forecast_after_latest_observation"
-                            ] += 1
-
-                            model_diagnostics[model][
-                                "after_latest_observation"
-                            ] += 1
-
-                        else:
-                            diagnostics[
-                                "missing_observation_at_valid_time"
-                            ] += 1
-
-                            model_diagnostics[model][
-                                "missing_observation"
-                            ] += 1
-
-                        continue
-
-                    event_key = (
-                        issue,
-                        obs_key,
-                        bucket,
-                        model
-                    )
-
-                    observed, offset = match
-                    candidates[event_key].append((predicted, observed, offset))
-
-                    model_diagnostics[model][
-                        f"{variable}_matched"
-                    ] += 1
-
-    mark_phase("Raggruppamento dei confronti")
-    events = defaultdict(dict)
-
-    for (
-        issue,
-        obs_key,
-        bucket,
-        model
-    ), values in candidates.items():
-
-        if len(values) != 1:
-            diagnostics[
-                "duplicate_forecasts"
-            ] += 1
-
-            model_diagnostics[model][
-                "duplicate_forecasts"
-            ] += 1
-            continue
-
-        events[
-            (issue, obs_key, bucket)
-        ][model] = values[0]
-
-        model_diagnostics[model][
-            "unique_pairs"
-        ] += 1
-
-    mark_phase("Confronto degli otto modelli")
-    official_errors = defaultdict(list)
-    exact_time_errors = defaultdict(list)
-    preliminary_errors = defaultdict(list)
+    official_errors = defaultdict(lambda: array("d"))
+    exact_time_errors = defaultdict(lambda: array("d"))
+    preliminary_errors = defaultdict(lambda: array("d"))
     precipitation_counts = defaultdict(Counter)
     event_offsets = Counter()
     complete_event_offsets = Counter()
 
-    for (
-        issue,
-        obs_key,
-        bucket
-    ), models in events.items():
+    with tempfile.TemporaryDirectory(prefix="meteohub-matches-") as work:
+        paths = [Path(work) / str(i) for i in range(32)]
+        with ExitStack() as files:
+            partitions = [files.enter_context(path.open("wb")) for path in paths]
+            for path in forecast_files:
+                mark_phase(f"Confronto con le previsioni di {path.name}")
 
-        variable = obs_key[3]
-        # All models in the same forecast cycle use the same observation.
-        _, measured, offset = next(iter(models.values()))
-        offset_seconds = offset.total_seconds()
-        event_offsets[offset_seconds] += 1
+                with gzip.open(
+                    path,
+                    "rt",
+                    encoding="utf-8",
+                    newline=""
+                ) as file:
 
-        diagnostics[
-            "events_with_at_least_one_model"
-        ] += 1
+                    for row in csv.DictReader(file):
+                        diagnostics["forecast_rows"] += 1
 
-        for model, (
-            predicted,
-            observed,
-            _
-        ) in models.items():
+                        model = (
+                            row.get("model") or ""
+                        ).strip()
 
-            preliminary_errors[
-                (model, variable, bucket)
-            ].append(
-                predicted - observed
-            )
+                        # Preserve historical files but do not
+                        # use the obsolete AIFS identifier.
+                        if model in LEGACY_MODELS:
+                            diagnostics[
+                                "legacy_rows_excluded"
+                            ] += 1
+                            continue
 
-        if set(models) != all_models:
-            diagnostics[
-                "incomplete_model_comparison"
-            ] += 1
+                        if model not in OFFICIAL_MODELS:
+                            diagnostics[
+                                "unknown_model_rows"
+                            ] += 1
+                            continue
 
-            diagnostics[
-                "partial_events"
-            ] += 1
-            continue
+                        model_diagnostics[model][
+                            "forecast_rows"
+                        ] += 1
 
-        diagnostics[
-            "complete_model_events"
-        ] += 1
-        complete_event_offsets[offset_seconds] += 1
-        if variable == PRECIPITATION_VARIABLE:
-            diagnostics["complete_precipitation_events"] += 1
-            verified_rain_stations.add(obs_key[:2])
-            if measured > 0:
-                diagnostics["complete_wet_precipitation_events"] += 1
+                        issue = timestamp(
+                            row.get("acquired_utc")
+                        )
 
-        for model, (
-            predicted,
-            observed,
-            offset
-        ) in models.items():
-            error = predicted - observed
-            key = (model, variable, bucket)
-            official_errors[key].append(error)
-            if not offset:
-                exact_time_errors[key].append(error)
-            if variable == PRECIPITATION_VARIABLE:
-                outcome = PRECIPITATION_OUTCOMES[
-                    (predicted >= PRECIPITATION_THRESHOLD_MM, observed >= PRECIPITATION_THRESHOLD_MM)
-                ]
-                precipitation_counts[(model, bucket)][outcome] += 1
+                        valid = timestamp(
+                            row.get("valid_time_utc")
+                        )
+
+                        if (
+                            not issue
+                            or not valid
+                            or valid <= issue
+                        ):
+                            diagnostics[
+                                "invalid_forecast_time"
+                            ] += 1
+
+                            model_diagnostics[model][
+                                "invalid_forecast_time"
+                            ] += 1
+                            continue
+
+                        if (
+                            valid.minute
+                            or valid.second
+                            or valid.microsecond
+                        ):
+                            diagnostics[
+                                "non_hourly_forecast"
+                            ] += 1
+
+                            model_diagnostics[model][
+                                "non_hourly_forecast"
+                            ] += 1
+                            continue
+
+                        hours = (
+                            valid - issue
+                        ).total_seconds() / 3600
+
+                        bucket = lead_bucket(hours)
+
+                        if bucket is None:
+                            diagnostics[
+                                "outside_lead_window"
+                            ] += 1
+
+                            model_diagnostics[model][
+                                "outside_lead_window"
+                            ] += 1
+                            continue
+
+                        network = (
+                            row.get("network") or ""
+                        ).strip()
+
+                        station = (
+                            row.get("station_id") or ""
+                        ).strip()
+
+                        if not network or not station:
+                            diagnostics[
+                                "missing_forecast_station"
+                            ] += 1
+
+                            model_diagnostics[model][
+                                "missing_forecast_station"
+                            ] += 1
+                            continue
+
+                        for variable in FORECAST_VARIABLES:
+
+                            predicted = number(
+                                row.get(variable)
+                            )
+
+                            if predicted is None or (
+                                variable == PRECIPITATION_VARIABLE and predicted < 0
+                            ):
+                                diagnostics[
+                                    "missing_prediction_value"
+                                ] += 1
+
+                                model_diagnostics[model][
+                                    f"{variable}_missing"
+                                ] += 1
+                                continue
+
+                            if (
+                                variable == PRECIPITATION_VARIABLE
+                                and issue > valid - HOUR
+                            ):
+                                diagnostics["precipitation_already_started"] += 1
+                                model_diagnostics[model]["precipitation_already_started"] += 1
+                                continue
+
+                            model_diagnostics[model][
+                                f"{variable}_valid"
+                            ] += 1
+
+                            obs_key = (
+                                network,
+                                station,
+                                valid,
+                                variable
+                            )
+
+                            if obs_key in gaps:
+                                gap_forecasts[(issue, obs_key)][model] += 1
+                                latitude = number(row.get("latitude"))
+                                longitude = number(row.get("longitude"))
+                                if (
+                                    latitude is not None and -90 <= latitude <= 90
+                                    and longitude is not None and -180 <= longitude <= 180
+                                ):
+                                    gap_coordinates.setdefault(obs_key, (latitude, longitude))
+
+                            match = match_observation(
+                                obs_key, issue, now, observations, nearby_observations
+                            )
+                            if match is None:
+
+                                diagnostics["unmatched"] += 1
+
+                                model_diagnostics[model][
+                                    f"{variable}_unmatched"
+                                ] += 1
+
+                                if valid > now:
+                                    diagnostics[
+                                        "forecast_valid_time_in_future"
+                                    ] += 1
+
+                                    model_diagnostics[model][
+                                        "future"
+                                    ] += 1
+
+                                elif (
+                                    latest_observation is not None
+                                    and valid > latest_observation
+                                ):
+                                    diagnostics[
+                                        "forecast_after_latest_observation"
+                                    ] += 1
+
+                                    model_diagnostics[model][
+                                        "after_latest_observation"
+                                    ] += 1
+
+                                else:
+                                    diagnostics[
+                                        "missing_observation_at_valid_time"
+                                    ] += 1
+
+                                    model_diagnostics[model][
+                                        "missing_observation"
+                                    ] += 1
+
+                                continue
+
+                            station_key = (network, station)
+                            station_id = station_ids.setdefault(station_key, len(station_ids))
+                            issue_id = issue_ids.setdefault(issue, len(issue_ids))
+                            observed, offset = match
+                            record = (station_id, issue_id, int(valid.timestamp()), variable_ids[variable],
+                                      bucket, model_ids[model], predicted, observed, offset.total_seconds())
+                            marshal.dump(record, partitions[station_id % len(partitions)])
+
+                            model_diagnostics[model][
+                                f"{variable}_matched"
+                            ] += 1
+
+        del nearby_observations
+        stations = list(station_ids)
+        for index, path in enumerate(paths, 1):
+            mark_phase(f"Confronto degli otto modelli: blocco {index}/{len(paths)}")
+            events = defaultdict(dict)
+            with path.open("rb") as source:
+                while source.peek(1):
+                    station_id, issue_id, valid, variable_id, bucket, model_id, predicted, observed, seconds = marshal.load(source)
+                    models = events[(station_id, issue_id, valid, variable_id, bucket)]
+                    model = model_names[model_id]
+                    # A repeated model invalidates that pair, even across two files.
+                    models[model] = None if model in models else (predicted, observed, seconds)
+            path.unlink()
+            for (station_id, issue_id, valid, variable_id, bucket), pairs in events.items():
+                models = {}
+                for model, pair in pairs.items():
+                    if pair is None:
+                        diagnostics["duplicate_forecasts"] += 1
+                        model_diagnostics[model]["duplicate_forecasts"] += 1
+                    else:
+                        model_diagnostics[model]["unique_pairs"] += 1
+                        models[model] = pair
+                if not models:
+                    continue
+                variable = FORECAST_VARIABLES[variable_id]
+                # All models in the same forecast cycle use the same observation.
+                _, measured, offset = next(iter(models.values()))
+                offset_seconds = offset
+                event_offsets[offset_seconds] += 1
+
+                diagnostics[
+                    "events_with_at_least_one_model"
+                ] += 1
+
+                for model, (
+                    predicted,
+                    observed,
+                    _
+                ) in models.items():
+
+                    preliminary_errors[
+                        (model, variable, bucket)
+                    ].append(
+                        predicted - observed
+                    )
+
+                if set(models) != all_models:
+                    diagnostics[
+                        "incomplete_model_comparison"
+                    ] += 1
+
+                    diagnostics[
+                        "partial_events"
+                    ] += 1
+                    continue
+
+                diagnostics[
+                    "complete_model_events"
+                ] += 1
+                complete_event_offsets[offset_seconds] += 1
+                if variable == PRECIPITATION_VARIABLE:
+                    diagnostics["complete_precipitation_events"] += 1
+                    verified_rain_stations.add(stations[station_id])
+                    if measured > 0:
+                        diagnostics["complete_wet_precipitation_events"] += 1
+
+                for model, (
+                    predicted,
+                    observed,
+                    offset
+                ) in models.items():
+                    error = predicted - observed
+                    key = (model, variable, bucket)
+                    official_errors[key].append(error)
+                    if not offset:
+                        exact_time_errors[key].append(error)
+                    if variable == PRECIPITATION_VARIABLE:
+                        outcome = PRECIPITATION_OUTCOMES[
+                            (predicted >= PRECIPITATION_THRESHOLD_MM, observed >= PRECIPITATION_THRESHOLD_MM)
+                        ]
+                        precipitation_counts[(model, bucket)][outcome] += 1
+
+            del events
 
     mark_phase("Calcolo delle metriche")
     metrics = calculate_metrics(
