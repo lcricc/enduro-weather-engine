@@ -9,6 +9,7 @@ on:
       - .github/workflows/enduro_validation.yml
       - merge_historical_observations.py
       - validate_meteohub.py
+      - tests/test_meteohub_validator.py
       - meteohub_rain_recovery.py
   workflow_run:
     workflows:
@@ -38,6 +39,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Check scientific validation regressions
+        run: python -m unittest discover -s tests -p test_meteohub_validator.py
 
       - name: Download historical GitHub Releases
         env:
@@ -165,7 +169,7 @@ jobs:
           fi
 
       - name: Run scientific validation
-        run: python validate_meteohub.py
+        run: /usr/bin/time -v python validate_meteohub.py
 
       - name: Upload scientific validation report
         if: always()

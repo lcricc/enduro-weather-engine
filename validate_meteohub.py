@@ -18,14 +18,15 @@ import gzip
 import json
 import marshal
 import math
-import tempfile
-from array import array
-from contextlib import ExitStack
 import os
-import threading
 import shutil
+import sqlite3
+import tempfile
+import threading
+from contextlib import ExitStack
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
+from itertools import groupby
 from pathlib import Path
 
 from meteohub_rain_recovery import LOOKBACK, PUBLICATION_DELAY, missing_ends, recovery_plan
@@ -43,6 +44,8 @@ PRECIPITATION_CODE = "B13011"
 PRECIPITATION_VARIABLE = "precipitation_mm"
 PRECIPITATION_UNITS = ("kg/m2", "kg/m**2", "kg/m^2", "kg/m²", "mm")
 PRECIPITATION_THRESHOLD_MM = 0.1
+MATCH_PARTITIONS = 32
+MAX_IN_MEMORY_PARTITION_BYTES = 64 * 1024**2
 PRECIPITATION_OUTCOMES = {
     (True, True): "hits",
     (False, True): "misses",
@@ -289,9 +292,10 @@ def hourly_precipitation(intervals_by_hour, stats):
 
 def load_observations(
     approved, *, time_tolerance=EXACT_TIME, include_precipitation=False,
-    recovery_gaps=None, now=None
+    recovery_gaps=None, now=None, nearby_observations=None
 ):
-    observations = defaultdict(list)
+    # A repeated instant is ambiguous even if its measured value is identical.
+    observations = {}
     precipitation_intervals = defaultdict(dict)
     stats = Counter()
 
@@ -393,22 +397,29 @@ def load_observations(
                 VARIABLES[code],
             )
 
-            observations[obs_key].append(
-                convert(value, unit)
+            observations[obs_key] = (
+                None if obs_key in observations else convert(value, unit)
             )
 
     clean = {}
-
-    for key, values in observations.items():
-        if len(values) == 1:
-            clean[key] = values[0]
-            measured_at = key[2]
-            if measured_at == closest_hour(measured_at):
-                stats["usable_station_hours"] += 1
-            else:
-                stats["usable_non_hourly_observations"] += 1
-        else:
+    for key, value in observations.items():
+        if value is None:
             stats["ambiguous_observations"] += 1
+            continue
+        measured_at = key[2]
+        hour = closest_hour(measured_at)
+        if measured_at == hour:
+            stats["usable_station_hours"] += 1
+        else:
+            stats["usable_non_hourly_observations"] += 1
+            if nearby_observations is not None:
+                network, station, _, variable = key
+                nearby_observations[(network, station, hour, variable)].append(
+                    (measured_at - hour, value)
+                )
+                continue
+        clean[key] = value
+    del observations
 
     stats.setdefault("usable_station_hours", 0)
     if include_precipitation:
@@ -422,6 +433,8 @@ def load_observations(
                 if ends:
                     recovery_gaps[key] = ends
 
+    if nearby_observations is not None:
+        sort_nearby_observations(nearby_observations)
     return clean, stats
 
 
@@ -432,9 +445,13 @@ def index_nearby_observations(observations):
         offset = measured_at - hour
         if offset:
             by_hour[(network, station, hour, variable)].append((offset, value))
+    sort_nearby_observations(by_hour)
+    return by_hour
+
+
+def sort_nearby_observations(by_hour):
     for candidates in by_hour.values():
         candidates.sort(key=lambda candidate: (abs(candidate[0]), candidate[0]))
-    return by_hour
 
 
 def match_observation(
@@ -466,39 +483,57 @@ def lead_bucket(hours):
     return None
 
 
+class CompensatedSum:
+    """Neumaier summation, retaining small terms even when errors cancel."""
+
+    __slots__ = ("total", "correction")
+
+    def __init__(self):
+        self.total = self.correction = 0.0
+
+    def add(self, value):
+        total = self.total + value
+        if math.isfinite(total):
+            if abs(self.total) >= abs(value):
+                self.correction += (self.total - total) + value
+            else:
+                self.correction += (value - total) + self.total
+        self.total = total
+
+    def result(self):
+        return self.total + self.correction
+
+
+class ErrorTotals:
+    __slots__ = ("n", "absolute", "squared", "signed")
+
+    def __init__(self):
+        self.n = 0
+        self.absolute = CompensatedSum()
+        self.squared = CompensatedSum()
+        self.signed = CompensatedSum()
+
+    def add(self, error):
+        self.n += 1
+        self.absolute.add(abs(error))
+        self.squared.add(error * error)
+        self.signed.add(error)
+
+
 def calculate_metrics(errors):
-    metrics = []
-
-    for (model, variable, bucket), values in sorted(
-        errors.items()
-    ):
-        n = len(values)
-
-        if n == 0:
-            continue
-
-        metrics.append({
+    return [
+        {
             "model": model,
             "variable": variable,
             "lead_bucket": bucket,
-            "n": n,
-            "mae": round(
-                sum(abs(x) for x in values) / n,
-                4
-            ),
-            "rmse": round(
-                math.sqrt(
-                    sum(x * x for x in values) / n
-                ),
-                4
-            ),
-            "bias": round(
-                sum(values) / n,
-                4
-            ),
-        })
-
-    return metrics
+            "n": totals.n,
+            "mae": round(totals.absolute.result() / totals.n, 4),
+            "rmse": round(math.sqrt(totals.squared.result() / totals.n), 4),
+            "bias": round(totals.signed.result() / totals.n, 4),
+        }
+        for (model, variable, bucket), totals in sorted(errors.items())
+        if totals.n
+    ]
 
 
 def precipitation_metrics(counts):
@@ -603,6 +638,64 @@ def monitor_resources(stop, interval=30):
         stop.wait(interval)
 
 
+def partition_records(path):
+    with path.open("rb") as source:
+        while source.peek(1):
+            yield marshal.load(source)
+
+
+def add_model_pair(pairs, model_id, values):
+    # A repeated model invalidates that pair, even across two archives.
+    pairs[model_id] = None if model_id in pairs else values
+
+
+def partition_events(path, size):
+    if size <= MAX_IN_MEMORY_PARTITION_BYTES:
+        events = defaultdict(dict)
+        for row in partition_records(path):
+            key, model_id, values = row[:5], row[5], row[6:]
+            add_model_pair(events[key], model_id, values)
+        path.unlink()
+        yield from events.items()
+        return
+
+    # With a large or skewed block, order by event on disk and retain only
+    # one event at a time. Sequence breaks ties in original input order.
+    db_path = path.with_suffix(".sqlite")
+    db = sqlite3.connect(db_path)
+    try:
+        db.execute("PRAGMA journal_mode = OFF")
+        db.execute("PRAGMA cache_size = -8192")
+        db.execute("""
+            CREATE TABLE pairs (
+                station INTEGER, issue INTEGER, valid INTEGER, variable INTEGER,
+                bucket TEXT, sequence INTEGER, model INTEGER, predicted REAL,
+                observed REAL, offset REAL,
+                PRIMARY KEY (station, issue, valid, variable, bucket, sequence)
+            ) WITHOUT ROWID
+        """)
+        db.executemany(
+            "INSERT INTO pairs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ((*row[:5], sequence, *row[5:])
+             for sequence, row in enumerate(partition_records(path))),
+        )
+        db.commit()
+        print(f"[temporanei] blocco {path.name}: SQLite={db_path.stat().st_size} byte", flush=True)
+        path.unlink()
+        rows = db.execute("""
+            SELECT station, issue, valid, variable, bucket, model, predicted, observed, offset
+            FROM pairs ORDER BY station, issue, valid, variable, bucket, sequence
+        """)
+        for key, group in groupby(rows, key=lambda row: row[:5]):
+            pairs = {}
+            for row in group:
+                add_model_pair(pairs, row[5], row[6:])
+            yield key, pairs
+    finally:
+        db.close()
+        db_path.unlink(missing_ok=True)
+
+
 def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
     OUT.mkdir(
         parents=True,
@@ -629,23 +722,24 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
 
     now = now or datetime.now(timezone.utc)
     gaps = {}
+    nearby_observations = defaultdict(list)
     mark_phase("Lettura e aggregazione delle osservazioni")
     observations, obs_stats = load_observations(
         approved, time_tolerance=time_tolerance, include_precipitation=True,
-        recovery_gaps=gaps, now=now
+        recovery_gaps=gaps, now=now, nearby_observations=nearby_observations,
     )
-    mark_phase("Indicizzazione delle osservazioni")
-    nearby_observations = index_nearby_observations(observations)
-
-    latest_observation = max(
-        (key[2] for key in observations),
-        default=None
-    )
-
-    latest_exact_observation = max(
-        (key[2] for key in observations if key[2] == closest_hour(key[2])),
-        default=None,
-    )
+    latest_exact_observation = max((key[2] for key in observations), default=None)
+    latest_nearby_hour = max((key[2] for key in nearby_observations), default=None)
+    latest_observation = latest_exact_observation
+    if latest_nearby_hour is not None:
+        latest_nearby = max(
+            hour + offset
+            for (_, _, hour, _), values in nearby_observations.items()
+            if hour == latest_nearby_hour
+            for offset, _ in values
+        )
+        if latest_observation is None or latest_nearby > latest_observation:
+            latest_observation = latest_nearby
 
     diagnostics = Counter(
         complete_precipitation_events=0, complete_wet_precipitation_events=0
@@ -665,15 +759,15 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
 
     model_diagnostics = defaultdict(Counter)
 
-    official_errors = defaultdict(lambda: array("d"))
-    exact_time_errors = defaultdict(lambda: array("d"))
-    preliminary_errors = defaultdict(lambda: array("d"))
+    official_errors = defaultdict(ErrorTotals)
+    exact_time_errors = defaultdict(ErrorTotals)
+    preliminary_errors = defaultdict(ErrorTotals)
     precipitation_counts = defaultdict(Counter)
     event_offsets = Counter()
     complete_event_offsets = Counter()
 
     with tempfile.TemporaryDirectory(prefix="meteohub-matches-") as work:
-        paths = [Path(work) / str(i) for i in range(32)]
+        paths = [Path(work) / str(i) for i in range(MATCH_PARTITIONS)]
         with ExitStack() as files:
             partitions = [files.enter_context(path.open("wb")) for path in paths]
             for path in forecast_files:
@@ -885,20 +979,19 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
 
         del nearby_observations
         stations = list(station_ids)
-        for index, path in enumerate(paths, 1):
-            mark_phase(f"Confronto degli otto modelli: blocco {index}/{len(paths)}")
-            events = defaultdict(dict)
-            with path.open("rb") as source:
-                while source.peek(1):
-                    station_id, issue_id, valid, variable_id, bucket, model_id, predicted, observed, seconds = marshal.load(source)
-                    models = events[(station_id, issue_id, valid, variable_id, bucket)]
-                    model = model_names[model_id]
-                    # A repeated model invalidates that pair, even across two files.
-                    models[model] = None if model in models else (predicted, observed, seconds)
-            path.unlink()
-            for (station_id, issue_id, valid, variable_id, bucket), pairs in events.items():
+        sizes = [path.stat().st_size for path in paths]
+        print(
+            f"[temporanei] totale={sum(sizes)} byte | massimo={max(sizes)} byte | "
+            f"limite in RAM={MAX_IN_MEMORY_PARTITION_BYTES} byte | dimensioni={sizes}",
+            flush=True,
+        )
+        for index, (path, size) in enumerate(zip(paths, sizes), 1):
+            storage = "RAM" if size <= MAX_IN_MEMORY_PARTITION_BYTES else "SQLite"
+            mark_phase(f"Confronto degli otto modelli: blocco {index}/{len(paths)} ({size} byte, {storage})")
+            for (station_id, _, _, variable_id, bucket), pairs in partition_events(path, size):
                 models = {}
-                for model, pair in pairs.items():
+                for model_id, pair in pairs.items():
+                    model = model_names[model_id]
                     if pair is None:
                         diagnostics["duplicate_forecasts"] += 1
                         model_diagnostics[model]["duplicate_forecasts"] += 1
@@ -925,7 +1018,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
 
                     preliminary_errors[
                         (model, variable, bucket)
-                    ].append(
+                    ].add(
                         predicted - observed
                     )
 
@@ -956,16 +1049,14 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
                 ) in models.items():
                     error = predicted - observed
                     key = (model, variable, bucket)
-                    official_errors[key].append(error)
+                    official_errors[key].add(error)
                     if not offset:
-                        exact_time_errors[key].append(error)
+                        exact_time_errors[key].add(error)
                     if variable == PRECIPITATION_VARIABLE:
                         outcome = PRECIPITATION_OUTCOMES[
                             (predicted >= PRECIPITATION_THRESHOLD_MM, observed >= PRECIPITATION_THRESHOLD_MM)
                         ]
                         precipitation_counts[(model, bucket)][outcome] += 1
-
-            del events
 
     mark_phase("Calcolo delle metriche")
     metrics = calculate_metrics(
