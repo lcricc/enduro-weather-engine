@@ -1,0 +1,81 @@
+name: ENDURO Validator Regression
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/enduro_validator_regression.yml
+      - .github/workflows/enduro_validation.yml
+      - validate_meteohub.py
+      - merge_historical_observations.py
+      - meteohub_rain_recovery.py
+      - meteohub_request_all.py
+      - meteohub_approved_metadata.json
+      - enduro_rain_v01.py
+      - rain-baseline-v01.json
+      - rain-v01.json
+      - scripts/measure_meteohub_validation.py
+      - tests/*meteohub*validator.py
+      - tests/compare_meteohub_benchmarks.py
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/enduro_validator_regression.yml
+      - .github/workflows/enduro_validation.yml
+      - validate_meteohub.py
+      - merge_historical_observations.py
+      - meteohub_rain_recovery.py
+      - meteohub_request_all.py
+      - meteohub_approved_metadata.json
+      - enduro_rain_v01.py
+      - rain-baseline-v01.json
+      - scripts/measure_meteohub_validation.py
+      - tests/*meteohub*validator.py
+      - tests/compare_meteohub_benchmarks.py
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    name: Validator parity · RAM and SQLite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s tests -p test_meteohub_validator.py -v
+
+  historical:
+    name: Validator historical benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compare pinned historical releases against the optimized commit
+        run: >-
+          python tests/compare_meteohub_benchmarks.py
+          --output "$RUNNER_TEMP/meteohub-benchmark"
+          --cache "$RUNNER_TEMP/meteohub-release-assets"
+      - name: Upload benchmark and scientific outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteohub-historical-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/meteohub-benchmark/*.json
+            ${{ runner.temp }}/meteohub-benchmark/baseline/
+            ${{ runner.temp }}/meteohub-benchmark/baseline_sqlite/
+            ${{ runner.temp }}/meteohub-benchmark/candidate/
+            ${{ runner.temp }}/meteohub-benchmark/candidate_sqlite/
+          if-no-files-found: warn
+          retention-days: 90
