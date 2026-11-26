@@ -6,6 +6,7 @@ import io
 import json
 import math
 import os
+import shutil
 import tempfile
 import unittest
 from collections import defaultdict
@@ -14,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import validate_meteohub as validator
+from compare_meteohub_benchmarks import OBS_FILE, compare_values, get_asset, ram_regressed
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 11, 25, 12, tzinfo=timezone.utc)
@@ -126,9 +128,14 @@ class ValidatorRegression(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             make_fixture(root)
-            ram = run_validator(validator, root, "ram")
-            with patch.object(validator, "MAX_IN_MEMORY_PARTITION_BYTES", 0):
+            with patch.object(validator.sqlite3, "connect", wraps=validator.sqlite3.connect) as connect:
+                ram = run_validator(validator, root, "ram")
+                connect.assert_not_called()
+            with patch.object(validator, "MAX_IN_MEMORY_PARTITION_BYTES", 0), patch.object(
+                validator.sqlite3, "connect", wraps=validator.sqlite3.connect
+            ) as connect:
                 disk = run_validator(validator, root, "disk")
+                self.assertGreater(connect.call_count, 0)
             self.assertEqual(ram, disk)
 
             baseline = os.environ.get("METEOHUB_VALIDATOR_BASELINE")
@@ -154,6 +161,75 @@ class ValidatorRegression(unittest.TestCase):
                 self.assertEqual((metric["n"], metric["mae"], metric["bias"]), (4, 4.5, 4.5))
                 self.assertEqual(metric["rmse"], round(math.sqrt(86 / 4), 4))
         self.assertEqual(ram["enduro_rain_v01.json"]["overall"]["station_hours"], 2)
+
+    def test_missing_release_has_no_prospective_scores(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_fixture(root)
+            shutil.rmtree(root / "historical")
+            reports = run_validator(validator, root, "missing_release")
+        self.assertEqual(reports["validation_latest.json"]["status"], "VALIDATED")
+        prospective = reports["enduro_rain_v01.json"]
+        self.assertEqual(prospective["archived_cycles"], 0)
+        self.assertEqual(prospective["overall"]["station_hours"], 0)
+        self.assertIsNone(prospective["overall"]["5_of_8"]["csi"])
+
+    def test_missing_pinned_release_stops_historical_benchmark(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(FileNotFoundError, OBS_FILE):
+                get_asset(Path(directory), OBS_FILE, download=False)
+
+    def test_exact_and_equidistant_observations_after_issue(self):
+        key = ("network", "station", HOUR, "temperature_2m_c")
+        observations = {key: 9}
+        nearby = {key: [(-10 * MINUTE, 11), (10 * MINUTE, 18)]}
+        self.assertEqual(validator.match_observation(key, HOUR - 20 * MINUTE, NOW, observations, nearby),
+                         (9, timedelta(0)))
+        self.assertEqual(validator.match_observation(key, HOUR - 20 * MINUTE, NOW, {}, nearby),
+                         (11, -10 * MINUTE))
+        self.assertEqual(validator.match_observation(key, HOUR - 5 * MINUTE, NOW, {}, nearby),
+                         (18, 10 * MINUTE))
+
+    def test_ambiguous_instant_does_not_enter_matching_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_fixture(root)
+            with patch.multiple(validator, OBS=root / "observations.csv",
+                                APPROVED=ROOT / "meteohub_approved_metadata.json"):
+                nearby = defaultdict(list)
+                exact, stats = validator.load_observations(
+                    validator.load_approved(), time_tolerance=validator.OBSERVATION_TOLERANCE,
+                    nearby_observations=nearby,
+                )
+            key = ("network", "duplicate_obs", HOUR, "temperature_2m_c")
+            self.assertNotIn(key, exact)
+            self.assertNotIn(key, nearby)
+            self.assertEqual(stats["ambiguous_observations"], 1)
+
+    def test_partial_model_set_and_repeated_model_count_as_preliminary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_fixture(root)
+            no_duplicate = root / "forecasts" / "forecasts_meteohub_b.csv.gz"
+            with_duplicate = run_validator(validator, root, "duplicate")
+            no_duplicate.unlink()
+            without_duplicate = run_validator(validator, root, "distinct")
+        before = with_duplicate["validation_latest.json"]["forecast_diagnostics"]
+        after = without_duplicate["validation_latest.json"]["forecast_diagnostics"]
+        self.assertEqual(before["duplicate_forecasts"], 1)
+        self.assertNotIn("duplicate_forecasts", after)
+        self.assertEqual(after["complete_model_events"], before["complete_model_events"] + 1)
+        self.assertEqual(after["partial_events"], before["partial_events"] - 1)
+        self.assertGreater(after["partial_events"], 0)
+
+    def test_benchmark_regression_thresholds(self):
+        self.assertFalse(ram_regressed(10000, 11200))
+        self.assertTrue(ram_regressed(10000, 11201))
+        differences = []
+        compare_values({"n": 12, "mae": 10.0000}, {"n": 12, "mae": 10.0001}, differences, "sample")
+        self.assertEqual(differences, [])
+        compare_values({"n": 12, "mae": 10.0000}, {"n": 13, "mae": 10.0002}, differences, "sample")
+        self.assertCountEqual([item.split(":")[0] for item in differences], ["sample.n", "sample.mae"])
 
     def test_compensated_signed_sum(self):
         totals = validator.ErrorTotals()

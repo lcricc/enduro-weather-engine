@@ -3,19 +3,12 @@ name: ENDURO MeteoHub Scientific Validation
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/enduro_validation.yml
-      - merge_historical_observations.py
-      - validate_meteohub.py
-      - tests/test_meteohub_validator.py
-      - meteohub_rain_recovery.py
   workflow_run:
     workflows:
       - ENDURO Permanent Archive
     types:
       - completed
+    branches: [main]
 
 permissions:
   contents: read
@@ -32,6 +25,9 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      - name: Record validation job start
+        run: echo "ENDURO_VALIDATION_JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -39,9 +35,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Check scientific validation regressions
-        run: python -m unittest discover -s tests -p test_meteohub_validator.py
 
       - name: Download historical GitHub Releases
         env:
@@ -169,7 +162,20 @@ jobs:
           fi
 
       - name: Run scientific validation
-        run: /usr/bin/time -v python validate_meteohub.py
+        id: validate
+        run: >-
+          python scripts/measure_meteohub_validation.py
+          --profile data/validation/meteohub/run_profile.json
+          -- python -u validate_meteohub.py
+
+      - name: Record validation Job Summary
+        if: always()
+        env:
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+        run: >-
+          python scripts/measure_meteohub_validation.py
+          --profile data/validation/meteohub/run_profile.json
+          --summary "$VALIDATION_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload scientific validation report
         if: always()

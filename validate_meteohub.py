@@ -609,7 +609,7 @@ _validation_phase = "Avvio"
 def mark_phase(name):
     global _validation_phase
     _validation_phase = name
-    if os.environ.get("GITHUB_ACTIONS") == "true":
+    if os.environ.get("GITHUB_ACTIONS") == "true" or os.environ.get("ENDURO_VALIDATION_PHASES") == "1":
         print(f"[fase] {name}", flush=True)
 
 
@@ -1263,6 +1263,7 @@ def validate(*, time_tolerance=OBSERVATION_TOLERANCE, now=None):
         encoding="utf-8"
     )
 
+    mark_phase("Rapporti di validazione completati")
     print(
         json.dumps(
             report,
