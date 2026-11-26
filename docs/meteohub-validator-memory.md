@@ -103,12 +103,14 @@ conserva i risultati scientifici, mentre tempo e RAM provengono dai log.
 
 `ENDURO Validator Regression` esegue il test di parità per RAM e SQLite
 sulle modifiche al validatore e alle sue dipendenze. Un secondo job esegue
-il campione storico con il commit ottimizzato fissato, il candidato e il
-candidato con SQLite forzato. Le corse sono sequenziali sullo stesso runner.
+il campione storico con il commit ottimizzato fissato e il candidato in
+modalità automatica e con SQLite forzato. Le quattro corse sono sequenziali
+sullo stesso runner.
 L'artifact conserva i profili e i file scientifici per 90 giorni.
 
 Il controllo fallisce per un incremento del picco RSS **oltre il 12%**
-rispetto alla baseline ottimizzata nello stesso job. Conteggi,
+in una delle due modalità rispetto al riferimento della stessa modalità.
+Conteggi,
 abbinamenti, pioggia, diagnostica e struttura degli output devono coincidere.
 La sola tolleranza è **0,0001 assoluto** su MAE, RMSE e bias, una cifra
 pubblicata. Tempo e spazio temporaneo sono registrati per osservare
@@ -121,7 +123,8 @@ python tests/compare_meteohub_benchmarks.py \
   --cache /tmp/meteohub-release-assets --output /tmp/meteohub-historical-initial
 ```
 
-Omettere `--baseline` per confrontare con il commit ottimizzato. Per
+Omettere `--baseline` per usare il commit ottimizzato anche in modalità
+automatica. SQLite usa sempre il commit ottimizzato come riferimento. Per
 ripetere il benchmark senza rete dopo il primo recupero, aggiungere
 `--offline` e usare una nuova directory di output.
 

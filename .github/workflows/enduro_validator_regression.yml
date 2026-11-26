@@ -74,6 +74,7 @@ jobs:
           path: |
             ${{ runner.temp }}/meteohub-benchmark/*.json
             ${{ runner.temp }}/meteohub-benchmark/baseline/
+            ${{ runner.temp }}/meteohub-benchmark/baseline_sqlite/
             ${{ runner.temp }}/meteohub-benchmark/candidate/
             ${{ runner.temp }}/meteohub-benchmark/candidate_sqlite/
           if-no-files-found: warn

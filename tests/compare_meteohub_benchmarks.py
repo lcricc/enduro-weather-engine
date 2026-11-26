@@ -149,11 +149,19 @@ def ram_regressed(before, after):
     return after * 100 > before * (100 + RAM_LIMIT_PERCENT)
 
 
+def stage_validator(directory, commit):
+    directory.mkdir()
+    for name in ("validate_meteohub.py", "meteohub_rain_recovery.py", "meteohub_request_all.py", "enduro_rain_v01.py",
+                 "meteohub_approved_metadata.json", "rain-v01.json", "rain-baseline-v01.json"):
+        (directory / name).write_text(git("show", f"{commit}:{name}") + "\n", encoding="utf-8")
+    return directory / "validate_meteohub.py"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New output directory")
     parser.add_argument("--cache", type=Path, required=True, help="Directory for the two pinned downloads")
-    parser.add_argument("--baseline", default=OPTIMIZED_REF, help="Git commit available locally")
+    parser.add_argument("--baseline", default=OPTIMIZED_REF, help="Git commit for the automatic mode comparison")
     parser.add_argument("--offline", action="store_true", help="Require the two releases in the cache")
     args = parser.parse_args()
     work = args.output.resolve()
@@ -162,32 +170,47 @@ def main():
     cache.mkdir(parents=True, exist_ok=True)
     fixture = prepare_fixture(work, cache, not args.offline)
     baseline = git("rev-parse", "--verify", f"{args.baseline}^{{commit}}")
-    baseline_code = work / "baseline_code"
-    baseline_code.mkdir()
-    for name in ("validate_meteohub.py", "meteohub_rain_recovery.py", "meteohub_request_all.py", "enduro_rain_v01.py",
-                 "meteohub_approved_metadata.json", "rain-v01.json", "rain-baseline-v01.json"):
-        (baseline_code / name).write_text(git("show", f"{baseline}:{name}") + "\n", encoding="utf-8")
-    module = baseline_code / "validate_meteohub.py"
+    baseline_module = stage_validator(work / "baseline_code", baseline)
+    sqlite_ref = git("rev-parse", "--verify", f"{OPTIMIZED_REF}^{{commit}}")
+    sqlite_module = baseline_module
+    if sqlite_ref != baseline:
+        sqlite_module = stage_validator(work / "baseline_sqlite_code", sqlite_ref)
     profiles = {
-        "baseline": run_benchmark(fixture, work, "baseline", module),
+        "baseline": run_benchmark(fixture, work, "baseline", baseline_module),
         "candidate": run_benchmark(fixture, work, "candidate"),
+        "baseline_sqlite": run_benchmark(fixture, work, "baseline_sqlite", sqlite_module, "sqlite"),
         "candidate_sqlite": run_benchmark(fixture, work, "candidate_sqlite", partition_mode="sqlite"),
     }
     before, after = profiles["baseline"], profiles["candidate"]
     differences = compare_outputs(work / "baseline", work / "candidate")
-    sqlite_diffs = compare_outputs(work / "candidate", work / "candidate_sqlite")
-    differences.extend(f"SQLite parity: {item}" for item in sqlite_diffs)
-    if not any("SQLite=" in line for line in profiles["candidate_sqlite"]["partition_logs"]):
-        differences.append("Historical SQLite run did not execute the disk path")
+    for reference, candidate in (("baseline_sqlite", "candidate_sqlite"), ("candidate", "candidate_sqlite")):
+        differences.extend(
+            f"{reference} vs {candidate}: {item}"
+            for item in compare_outputs(work / reference, work / candidate)
+        )
+    for name in ("baseline_sqlite", "candidate_sqlite"):
+        if not any("SQLite=" in line for line in profiles[name]["partition_logs"]):
+            differences.append(f"{name} did not execute the disk path")
     for field in ("observation_rows", "forecast_rows", "forecast_files"):
         if before[field] != after[field]:
             differences.append(f"{field}: {before[field]} != {after[field]}")
     if not all(after[field] for field in ("observation_rows", "forecast_rows", "complete_model_events",
                                          "complete_precipitation_events", "prospective_station_hours")):
         differences.append("Historical sample did not produce usable complete validation cases")
-    ram_delta = 100 * (after["peak_rss_kib"] / before["peak_rss_kib"] - 1)
+    ram_checks = {}
+    for mode, reference, candidate in (
+        ("auto", "baseline", "candidate"),
+        ("sqlite", "baseline_sqlite", "candidate_sqlite"),
+    ):
+        before_rss = profiles[reference]["peak_rss_kib"]
+        after_rss = profiles[candidate]["peak_rss_kib"]
+        ram_checks[mode] = {
+            "change_percent": round(100 * (after_rss / before_rss - 1), 3),
+            "passed": not ram_regressed(before_rss, after_rss),
+        }
     report = {
         "baseline_commit": baseline,
+        "baseline_sqlite_commit": sqlite_ref,
         "candidate_commit": git("rev-parse", "HEAD"),
         "python": sys.version,
         "as_of_utc": HISTORICAL_NOW,
@@ -195,10 +218,12 @@ def main():
                            for name, (tag, digest) in ASSETS.items()],
         "forecast_release_published_at": PUBLISHED_AT,
         "ram_limit_percent": RAM_LIMIT_PERCENT,
-        "ram_change_percent": round(ram_delta, 3),
+        "ram_change_percent": ram_checks["auto"]["change_percent"],
+        "sqlite_ram_change_percent": ram_checks["sqlite"]["change_percent"],
+        "ram_checks": ram_checks,
         "metric_abs_tolerance": METRIC_TOLERANCE,
         "scientific_differences": differences,
-        "passed": not differences and not ram_regressed(before["peak_rss_kib"], after["peak_rss_kib"]),
+        "passed": not differences and all(check["passed"] for check in ram_checks.values()),
         **profiles,
     }
     encoded = json.dumps(report, indent=2) + "\n"

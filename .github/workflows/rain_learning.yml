@@ -1,6 +1,9 @@
 name: ENDURO Historical Rain Calibration
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/rain_learning.yml
   schedule:
     - cron: '35 6 * * *'
   push:
@@ -10,16 +13,17 @@ on:
       - calibrate_rain.py
       - rain_learning_sources.py
       - meteohub_approved_metadata.json
+      - validate_meteohub.py
       - data/geography/**
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: enduro-historical-rain-calibration
+  group: enduro-historical-rain-calibration-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: false
 jobs:
   learn:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 150
     outputs:
@@ -27,7 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'pull_request' && github.sha || 'main' }}
+          persist-credentials: false
       - name: Record calibration input commit
         id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -69,11 +74,20 @@ jobs:
         with:
           ref: ${{ needs.learn.outputs.source_sha }}
           fetch-depth: 0
+          persist-credentials: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/download-artifact@v4
         with:
           name: rain-calibration-${{ github.run_id }}
-          path: .
+          path: ${{ runner.temp }}/rain-calibration
+      - name: Verify downloaded calibration
+        run: |
+          set -euo pipefail
+          calibration_dir="$RUNNER_TEMP/rain-calibration"
+          python -m json.tool "$calibration_dir/rain-v01.json" > /dev/null
+          python -m json.tool "$calibration_dir/data/rain-learning/sources.json" > /dev/null
+          cp -a "$calibration_dir/." .
       - name: Publish calibration and preserve partial-run evidence
+        if: github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           git add rain-v01.json data/rain-learning/
