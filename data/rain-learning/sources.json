@@ -891,6 +891,15 @@
     "published": "2026-11-15T11:52:19Z",
     "url": "https://api.github.com/repos/lcricc/enduro-weather-engine/releases/assets/750836751"
   },
+  "db9810643187d39a30398a1af030d3c0997d1fba7e521bb97d1223ae79da2073": {
+    "key": "db9810643187d39a30398a1af030d3c0997d1fba7e521bb97d1223ae79da2073",
+    "kind": "observations",
+    "name": "observations-45715043369.tar.gz",
+    "optional": true,
+    "partial": false,
+    "published": "2026-11-25T22:41:18Z",
+    "url": "https://api.github.com/repos/lcricc/enduro-weather-engine/releases/assets/793426490"
+  },
   "dd2da25b22f55fd061cf39160cea0a42f2550fd8315e504272ebb0b90db53b30": {
     "key": "dd2da25b22f55fd061cf39160cea0a42f2550fd8315e504272ebb0b90db53b30",
     "kind": "observations",
@@ -1017,6 +1026,15 @@
     "partial": false,
     "published": "2026-11-16T22:33:36Z",
     "url": "https://api.github.com/repos/lcricc/enduro-weather-engine/releases/assets/756704426"
+  },
+  "f8d02019968b283381800233c384d6dcd1770ea5556184f5a4191538c225b8dd": {
+    "key": "f8d02019968b283381800233c384d6dcd1770ea5556184f5a4191538c225b8dd",
+    "kind": "observations",
+    "name": "observations-45739943960.tar.gz",
+    "optional": true,
+    "partial": false,
+    "published": "2026-11-26T02:06:15Z",
+    "url": "https://api.github.com/repos/lcricc/enduro-weather-engine/releases/assets/793952051"
   },
   "fa253e7c62a99f4c1b343144786cac74042e9115cd5f3f7f41c9be917779102d": {
     "key": "fa253e7c62a99f4c1b343144786cac74042e9115cd5f3f7f41c9be917779102d",
