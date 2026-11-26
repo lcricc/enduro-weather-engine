@@ -396,6 +396,15 @@
     "published": "2026-11-21T22:25:17Z",
     "url": "https://api.github.com/repos/lcricc/enduro-weather-engine/releases/assets/777057157"
   },
+  "6f8d2fe4f3b64a7785ac07f2c92240ca40968b583d1404936fd3f068dc97945e": {
+    "key": "6f8d2fe4f3b64a7785ac07f2c92240ca40968b583d1404936fd3f068dc97945e",
+    "kind": "forecasts",
+    "name": "forecasts-45760995485.tar.gz",
+    "optional": false,
+    "partial": false,
+    "published": "2026-11-26T07:02:49Z",
+    "url": "https://api.github.com/repos/lcricc/enduro-weather-engine/releases/assets/794697171"
+  },
   "70738edb450e93d38c718b1f3d73b56288fdbf589cd09f700a570176514ce0d1": {
     "key": "70738edb450e93d38c718b1f3d73b56288fdbf589cd09f700a570176514ce0d1",
     "kind": "observations",
